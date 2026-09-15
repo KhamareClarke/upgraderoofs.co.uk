@@ -7,7 +7,7 @@
  *
  * GTM  : GTM-5LMDG3F7
  * GA4  : G-7V452FMYFY
- * Ads  : AW-7693225904 (lead-form conversion container; comment on AW-8479028400 below)
+ * Ads  : AW-17763560213 (conversion id / gtag container for this account)
  *
  * Conversion events are pushed to window.dataLayer from lib/tracking.ts.
  * GTM listens for those events and fires GA4 event tags + Ads conversion tags.
@@ -19,8 +19,8 @@ import { captureClickIds } from '@/lib/tracking';
 
 const GTM_ID         = process.env.NEXT_PUBLIC_GTM_ID         || 'GTM-5LMDG3F7';
 const GA4_ID         = process.env.NEXT_PUBLIC_GA4_ID         || 'G-7V452FMYFY';
-const GADS_ID        = process.env.NEXT_PUBLIC_GADS_ID        || 'AW-7693225904';
-const GADS_CONV_ID   = process.env.NEXT_PUBLIC_GADS_CONV_ID   || 'AW-7693225904';
+const GADS_ID        = process.env.NEXT_PUBLIC_GADS_ID        || 'AW-17763560213';
+const GADS_CONV_ID   = process.env.NEXT_PUBLIC_GADS_CONV_ID   || 'AW-17763560213';
 // Dedicated conversion action for low-value phone/WhatsApp taps. Must be a real
 // conversion action ID in Google Ads. Deliberately null when unset · do NOT fall
 // back to the lead-form ID, else taps get mislabelled as full lead-form conversions.
@@ -30,9 +30,9 @@ const GADS_CLICK_CONV_ID = process.env.NEXT_PUBLIC_GADS_CLICK_CONV_ID || null;
  * Distinct Google Ads ACCOUNT ids to initialise, derived from the configured
  * conversion targets. Declared after GADS_CLICK_CONV_ID — it reads all three.
  *
- * `gtag('config', ...)` takes an account id (`AW-7693225904`) or a measurement
+ * `gtag('config', ...)` takes an account id (`AW-17763560213`) or a measurement
  * id (`G-XXXX`) — NOT a labelled conversion target. Passing the full
- * `AW-7693225904/abc123` value to `config` is invalid: the label belongs only in
+ * `AW-17763560213/eU-fCJyQkPkcEJXWqZZC` value to `config` is invalid: the label belongs only in
  * the `send_to` of a conversion *event*, which lib/tracking.ts already sends.
  *
  * The old code ran `gtag('config', GADS_CONV_ID)` with the whole target. That

@@ -74,14 +74,18 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // `gtag('config', X)` takes an ACCOUNT/conversion id (`AW-7693225904`), never a
-  // labelled conversion target. NEXT_PUBLIC_GADS_CONV_ID must hold the labelled
-  // form (`AW-7693225904/AbC-D_ef`) for conversions to register at all — so pass
-  // only the half before the slash. This is a no-op while the var holds a bare id
-  // (splitting on "/" returns it unchanged), and prevents feeding gtag a
-  // malformed id the moment a real label is configured. components/Analytics.tsx
-  // already does this for its own `gtag('config')` call.
-  const gadsConvId = (process.env.NEXT_PUBLIC_GADS_CONV_ID || 'AW-7693225904').split('/')[0].trim();
+  // `gtag('config', X)` takes an ACCOUNT/conversion id (`AW-17763560213`), never a
+  // labelled conversion target. NEXT_PUBLIC_GADS_CONV_ID holds the labelled form
+  // (`AW-17763560213/eU-fCJyQkPkcEJXWqZZC`) because that is what a conversion
+  // `send_to` needs — so pass only the half before the slash. Splitting on "/" is
+  // a no-op for a bare id, and prevents feeding gtag a malformed id.
+  // components/Analytics.tsx already does this for its own `gtag('config')` call.
+  //
+  // The fallback is a bare ACCOUNT id, deliberately not a labelled target: see
+  // the no-fallback policy in lib/tracking.ts. If the env var goes missing we want
+  // the right account configured but NO conversion sent, rather than a hardcoded
+  // label silently firing at whatever action it happened to name at the time.
+  const gadsConvId = (process.env.NEXT_PUBLIC_GADS_CONV_ID || 'AW-17763560213').split('/')[0].trim();
   return (
     <html lang="en-GB" className={poppins.variable}>
       <head>
@@ -93,7 +97,7 @@ export default function RootLayout({
             conversion id is present in the initial HTML for attribution. */}
         <script
           async
-          src="https://www.googletagmanager.com/gtag/js?id=AW-7693225904"
+          src={`https://www.googletagmanager.com/gtag/js?id=${gadsConvId}`}
         />
         <script
           dangerouslySetInnerHTML={{

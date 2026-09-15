@@ -30,7 +30,11 @@ declare global {
 // Google Ads lead-form conversion target. Must be a COMPLETE target —
 // `AW-XXXXXXXXX/YYYYYYYYYY` (account id + conversion-action label). See
 // isCompleteConversionTarget() below for why the label half is mandatory.
-const GADS_CONV_ID = process.env.NEXT_PUBLIC_GADS_CONV_ID || 'AW-7693225904';
+// The fallback is a bare ACCOUNT id on purpose, not a labelled target: it keeps
+// isCompleteConversionTarget() below failing, so a missing env var produces a
+// loud warning and no conversion, instead of a hardcoded label silently firing
+// at whatever action it once named.
+const GADS_CONV_ID = process.env.NEXT_PUBLIC_GADS_CONV_ID || 'AW-17763560213';
 
 // Separate conversion action for low-value engagement clicks (phone/WhatsApp
 // taps) so they don't pollute the lead-form conversion data. Create the action
@@ -75,7 +79,7 @@ const GA4_DIRECT_EVENTS = process.env.NEXT_PUBLIC_GA4_DIRECT_EVENTS !== 'false';
 /**
  * True only for a complete Google Ads conversion target: `AW-XXXXXXXXX/YYYYY`.
  *
- * A bare account id (`AW-7693225904`, with no `/label`) is NOT a valid
+ * A bare account id (`AW-17763560213`, with no `/label`) is NOT a valid
  * `send_to`. Google Ads rejects it, so firing with one yields zero conversions
  * while every log line still claims a conversion was sent. The account id alone
  * identifies the account; the label identifies WHICH conversion action to
@@ -239,7 +243,7 @@ function sendGa4Event(eventName: string, params: Record<string, any>) {
 function fireGadsConversion(value: number, conversionId: string = GADS_CONV_ID) {
   if (typeof window === 'undefined' || typeof window.gtag !== 'function') return;
 
-  // Refuse to send a malformed target. A bare `AW-7693225904` is the documented
+  // Refuse to send a malformed target. A bare `AW-17763560213` is the documented
   // fallback in this file and in Analytics.tsx, and Google Ads rejects it — so
   // without this guard every lead-form submission emits a conversion call that
   // can never be credited. Skipping is the honest failure: nothing is recorded,
