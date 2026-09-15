@@ -12,12 +12,36 @@
  * append-only and safe against concurrency without in-process locking. Each
  * record is self-contained: timestamp, source route, contact fields, and the
  * captured gclid (raw, never transformed) for offline-conversion auditing.
+ *
+ * THIS FILE IS NOT DURABLE IN PRODUCTION — READ BEFORE RELYING ON IT
+ * ------------------------------------------------------------------
+ * Vercel's serverless filesystem is read-only apart from /tmp, and /tmp is
+ * per-instance and discarded. So in production every append below throws
+ * EROFS/ENOENT, is caught, and degrades to a console warning: the audit file
+ * simply never exists. It is useful locally and useless deployed, and the
+ * "never fails the lead" contract in the paragraph above means it fails
+ * *silently* — which is why this comment exists rather than a promise.
+ *
+ * The durable equivalent is `lead_pipeline_events` (lib/lead-health.ts), which
+ * records per-channel outcomes in Supabase. This module stays as the local
+ * development aid it always effectively was; do not treat it as a backup of a
+ * lead. Note also that it writes PII to disk, so it is deliberately NOT wired
+ * into the health table, which is PII-free.
  */
 import fs from 'fs';
 import path from 'path';
 
 const AUDIT_DIR = path.join(process.cwd(), 'data');
 const AUDIT_FILE = path.join(AUDIT_DIR, 'leads-audit.jsonl');
+
+/**
+ * Whether the "this filesystem is not writable" warning has been emitted.
+ *
+ * Without this guard the degradation warning fires on every single submission
+ * and buries the rest of the log — which is how a broken audit trail stays
+ * invisible. One line, once per process, is enough to notice.
+ */
+let unwritableWarned = false;
 
 export interface LeadSubmissionLog {
   timestamp: string;
@@ -57,7 +81,15 @@ export function logLeadSubmission(route: string, payload: Record<string, unknown
     fs.appendFileSync(AUDIT_FILE, JSON.stringify(record) + '\n', 'utf8');
   } catch (err) {
     // Disk write failure must never break the lead response path.
-    console.warn('[lead-audit] append failed:', err instanceof Error ? err.message : err);
+    if (!unwritableWarned) {
+      unwritableWarned = true;
+      console.warn(
+        '[lead-audit] DISABLED — this filesystem is not writable (expected on Vercel). ' +
+          'The local audit file is a development aid only; it does not exist in production. ' +
+          'Durable pipeline history lives in lead_pipeline_events (lib/lead-health.ts). ' +
+          `First error: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }
 

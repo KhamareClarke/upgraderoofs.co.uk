@@ -27,7 +27,11 @@ declare global {
   }
 }
 
+// Google Ads lead-form conversion target. Must be a COMPLETE target —
+// `AW-XXXXXXXXX/YYYYYYYYYY` (account id + conversion-action label). See
+// isCompleteConversionTarget() below for why the label half is mandatory.
 const GADS_CONV_ID = process.env.NEXT_PUBLIC_GADS_CONV_ID || 'AW-7693225904';
+
 // Separate conversion action for low-value engagement clicks (phone/WhatsApp
 // taps) so they don't pollute the lead-form conversion data. Create the action
 // in Google Ads (Tools → Conversions → "Phone/WhatsApp click") and set its ID
@@ -37,6 +41,49 @@ const GADS_CONV_ID = process.env.NEXT_PUBLIC_GADS_CONV_ID || 'AW-7693225904';
 // to Google Ads rather than mislabelling a £5 tap as a full lead-form (£50/£25)
 // conversion, which previously polluted bid-optimisation signals.
 const GADS_CLICK_CONV_ID = process.env.NEXT_PUBLIC_GADS_CLICK_CONV_ID || null;
+
+// GA4 measurement id. Mirrors components/Analytics.tsx, which reads
+// NEXT_PUBLIC_GA4_ID. (.env.example still documents this as NEXT_PUBLIC_GA_ID —
+// nothing reads that name, so setting it has no effect.)
+const GA4_ID = process.env.NEXT_PUBLIC_GA4_ID || 'G-7V452FMYFY';
+
+/**
+ * Whether custom events are sent straight to GA4 via gtag, in ADDITION to the
+ * dataLayer push. Set NEXT_PUBLIC_GA4_DIRECT_EVENTS=false to disable.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * This module historically only pushed to `window.dataLayer` and relied on GTM
+ * triggers to forward those events to GA4. Those triggers were never built, so
+ * every event below (phone_click, whatsapp_click, email_click, quote_request,
+ * contact_form_submit) reached the dataLayer and then stopped. GA4 recorded none
+ * of them while the Google Ads gtag calls in this file kept working — so the
+ * setup looked healthy in Ads and showed nothing in GA4.
+ *
+ * Analytics.tsx already loads gtag.js and runs `gtag('config', GA4_ID)`, so
+ * `window.gtag` routes into GA4 with or without GTM. This makes the events
+ * observable now instead of blocked on container configuration.
+ *
+ * DOUBLE-COUNT WARNING: if GTM triggers for these event names are created later,
+ * each event is counted twice — once here, once by GTM. Either leave those
+ * triggers unbuilt, or set NEXT_PUBLIC_GA4_DIRECT_EVENTS=false to hand delivery
+ * back to GTM. Consent Mode still applies either way: with analytics_storage
+ * denied, gtag routes through the consent layer exactly as GTM would.
+ */
+const GA4_DIRECT_EVENTS = process.env.NEXT_PUBLIC_GA4_DIRECT_EVENTS !== 'false';
+
+/**
+ * True only for a complete Google Ads conversion target: `AW-XXXXXXXXX/YYYYY`.
+ *
+ * A bare account id (`AW-7693225904`, with no `/label`) is NOT a valid
+ * `send_to`. Google Ads rejects it, so firing with one yields zero conversions
+ * while every log line still claims a conversion was sent. The account id alone
+ * identifies the account; the label identifies WHICH conversion action to
+ * credit, and is the half that is actually required.
+ */
+function isCompleteConversionTarget(value: string | null | undefined): value is string {
+  return typeof value === 'string' && /^AW-\d+\/[\w-]+$/.test(value.trim());
+}
 
 // --------------- click-id capture (Google Ads offline conversions) ---------------
 
@@ -147,6 +194,40 @@ function sendDataLayerEvent(eventName: string, params: Record<string, any>) {
     event: eventName,
     ...params,
   });
+
+  // …and forward it to GA4 directly, so the event is recorded even though no
+  // GTM trigger consumes the dataLayer event above. See GA4_DIRECT_EVENTS.
+  if (GA4_DIRECT_EVENTS) {
+    sendGa4Event(eventName, params);
+  }
+}
+
+/**
+ * Forward one custom event to GA4 through gtag.
+ *
+ * Separate from sendDataLayerEvent so the dataLayer contract (the documented
+ * event names GTM would listen for) stays exactly as it was — this only adds a
+ * second consumer. Fails silently when gtag.js has not loaded yet (script
+ * blocked, offline, or a click landing before hydration); that is a dropped
+ * analytics event, never a broken link.
+ */
+function sendGa4Event(eventName: string, params: Record<string, any>) {
+  if (typeof window === 'undefined' || typeof window.gtag !== 'function') {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`[tracking] gtag unavailable — GA4 event dropped: ${eventName}`);
+    }
+    return;
+  }
+
+  if (process.env.NODE_ENV === 'development') {
+    console.log(
+      `%c[tracking] → GA4 (${GA4_ID}): ${eventName}`,
+      'color: #4285f4; font-weight: bold;',
+      params,
+    );
+  }
+
+  window.gtag('event', eventName, params);
 }
 
 /**
@@ -157,6 +238,23 @@ function sendDataLayerEvent(eventName: string, params: Record<string, any>) {
  */
 function fireGadsConversion(value: number, conversionId: string = GADS_CONV_ID) {
   if (typeof window === 'undefined' || typeof window.gtag !== 'function') return;
+
+  // Refuse to send a malformed target. A bare `AW-7693225904` is the documented
+  // fallback in this file and in Analytics.tsx, and Google Ads rejects it — so
+  // without this guard every lead-form submission emits a conversion call that
+  // can never be credited. Skipping is the honest failure: nothing is recorded,
+  // and the warning below says exactly which env var to set. Mirrors the
+  // deliberate no-fallback policy already used for GADS_CLICK_CONV_ID above.
+  if (!isCompleteConversionTarget(conversionId)) {
+    console.warn(
+      `[tracking] Google Ads conversion NOT sent — target "${conversionId}" is not a ` +
+        `complete AW-XXXXXXXXX/YYYYYYYYYY id. Set NEXT_PUBLIC_GADS_CONV_ID to the full ` +
+        `value from Google Ads → Tools → Conversions (account id + "/" + action label). ` +
+        `Value ${value} GBP was dropped.`,
+    );
+    return;
+  }
+
   window.gtag('event', 'conversion', {
     send_to: conversionId,
     value,

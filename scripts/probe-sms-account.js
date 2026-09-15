@@ -12,6 +12,17 @@
  * cannot see the SMS account at all — so "the pipeline works" and "the SMS
  * account is provisioned" are two independent questions.
  *
+ * ⚠ WHAT THIS DOES *NOT* CHECK — READ BEFORE TRUSTING A PASS
+ * ----------------------------------------------------------
+ * Every call below is scoped to SMS_LOCATION_ID. A full PASS therefore proves
+ * the SMS sub-account is provisioned, and NOTHING about GHL_API_KEY. Because
+ * those are two separate location-scoped tokens, pasting the SMS token into
+ * GHL_API_KEY too — the mistake this project actually shipped in .env.local —
+ * leaves this script passing while every CRM call returns 403 Forbidden.
+ * Validate the primary token separately:
+ *
+ *     GET /locations/{GHL_LOCATION_ID}   →  expect 200, not 403
+ *
  * Nothing here writes. Every call is a GET, so it is safe to run at any time.
  *
  * THE FOUR THINGS THAT MUST ALL HOLD BEFORE DISPATCH CODE IS WORTH WRITING

@@ -101,95 +101,60 @@ function auditEnv() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 2. SPAM-FILTER REPLAY (rules extracted live from lib/spam-filter.ts)
+// 2. SPAM-FILTER REPLAY (the real lib/spam-filter.ts, executed in-process)
 // ─────────────────────────────────────────────────────────────────────────────
-function loadFilterRules() {
-  const src = fs.readFileSync(path.join(ROOT, 'lib', 'spam-filter.ts'), 'utf8');
-
-  // Pull the array literals straight out of the TypeScript source and evaluate
-  // them, so this diagnostic always tests the rules production actually ships.
-  const grab = (name) => {
-    const re = new RegExp(`const ${name}\\s*=\\s*(\\[[\\s\\S]*?\\n\\]);`);
-    const m = src.match(re);
-    if (!m) return null;
-    try {
-      return eval(m[1]); // eslint-disable-line no-eval
-    } catch {
-      return null;
-    }
-  };
-
-  const B2B_PHRASES = grab('B2B_PHRASES');
-  const URL_PATTERNS = grab('URL_PATTERNS');
-  const SUSPICIOUS_NAME_PATTERNS = grab('SUSPICIOUS_NAME_PATTERNS');
-
-  if (!B2B_PHRASES || !URL_PATTERNS || !SUSPICIOUS_NAME_PATTERNS) return null;
-  return { B2B_PHRASES, URL_PATTERNS, SUSPICIOUS_NAME_PATTERNS };
-}
-
-// Mirrors the field-selection logic in lib/spam-filter.ts isSpamSubmission().
-// The RULES come from source; only this ~20-line dispatch is restated here.
-function buildChecker(rules) {
-  const { B2B_PHRASES, URL_PATTERNS, SUSPICIOUS_NAME_PATTERNS } = rules;
-
-  const isUrlLike = (v) => URL_PATTERNS.some((re) => new RegExp(re.source, re.flags).test(v));
-  // Must match EMAIL_LIKE in lib/spam-filter.ts.
-  const EMAIL_LIKE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
-  const maskEmails = (v) => v.replace(EMAIL_LIKE, ' [email] ');
-  const hasB2bPitch = (v) => {
-    const t = v.toLowerCase();
-    if (t.includes('seo')) return true;
-    if (t.includes('marketing')) return true;
-    return B2B_PHRASES.some((p) => t.includes(p));
-  };
-  const collectStrings = (value, out) => {
-    if (typeof value === 'string') return void out.push(value);
-    if (Array.isArray(value)) return value.forEach((i) => collectStrings(i, out));
-    if (value && typeof value === 'object') Object.values(value).forEach((v) => collectStrings(v, out));
-  };
-
-  // Returns a list of the rules that fired (empty = lead passes).
-  return function check(payload) {
-    const hits = [];
-    const name = typeof payload.name === 'string' ? payload.name : '';
-
-    for (const re of SUSPICIOUS_NAME_PATTERNS) {
-      if (new RegExp(re.source, re.flags).test(name)) hits.push(`name matches ${re}`);
-    }
-    // `email` is intentionally NOT checked here — see lib/spam-filter.ts.
-    for (const key of ['name', 'phone', 'postcode']) {
-      const v = payload[key];
-      if (typeof v === 'string' && isUrlLike(v)) hits.push(`${key}="${v}" looks like a URL`);
-    }
-    const all = [];
-    collectStrings(payload, all);
-    for (const raw of all) {
-      const text = maskEmails(raw);
-      if (hasB2bPitch(text)) hits.push(`text "${text.slice(0, 48)}" contains a B2B pitch keyword`);
-      if (isUrlLike(text)) hits.push(`text "${text.slice(0, 48)}" looks like a URL`);
-    }
-    return hits;
-  };
+//
+// This used to regex the B2B_PHRASES / URL_PATTERNS arrays out of the source and
+// re-implement the dispatch around them. That approach had two failure modes,
+// and the rewrite hit both at once: the arrays were renamed (so extraction
+// returned null and the replay silently skipped itself), and the mirrored
+// dispatch had already drifted from the real one — it still carried the bare
+// `includes('seo')` / `includes('marketing')` checks that were deleting real
+// customers. A diagnostic that tests a copy of the rules cannot be trusted to
+// tell you whether the rules are wrong.
+//
+// So it now transpiles and executes lib/spam-filter.ts directly. The only thing
+// restated here is the reporting.
+function loadRealFilter() {
+  const ts = require('typescript');
+  const file = path.join(ROOT, 'lib', 'spam-filter.ts');
+  const src = fs.readFileSync(file, 'utf8');
+  const { outputText } = ts.transpileModule(src, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+    fileName: 'spam-filter.ts',
+  });
+  const module_ = { exports: {} };
+  // eslint-disable-next-line no-new-func
+  new Function('exports', 'require', 'module', outputText)(module_.exports, require, module_);
+  if (typeof module_.exports.assessSubmission !== 'function') {
+    throw new Error('lib/spam-filter.ts did not export assessSubmission');
+  }
+  return module_.exports;
 }
 
 function replayFilter() {
-  heading(2, 'SPAM-FILTER REPLAY (rules read from lib/spam-filter.ts)');
+  heading(2, 'SPAM-FILTER REPLAY (executing the real lib/spam-filter.ts)');
 
-  const rules = loadFilterRules();
-  if (!rules) {
-    console.log(`  ${bad('✘ Could not extract rule arrays from lib/spam-filter.ts.')}`);
+  let filter;
+  try {
+    filter = loadRealFilter();
+  } catch (err) {
+    console.log(`  ${bad(`✘ Could not load lib/spam-filter.ts: ${err.message}`)}`);
     console.log(`  ${C.dim}Skipping replay — do NOT trust a hardcoded mirror. Re-run after checking the file.${C.reset}`);
     return null;
   }
-  console.log(`  ${ok('✔')} Extracted ${rules.URL_PATTERNS.length} URL patterns, ${rules.B2B_PHRASES.length} B2B phrases, ${rules.SUSPICIOUS_NAME_PATTERNS.length} name patterns`);
-
-  const check = buildChecker(rules);
+  console.log(`  ${ok('✔')} Loaded and executed the real module (no mirrored rules)`);
 
   // Realistic payloads, one per live form. These are what a real customer sends.
+  // `expect` is the verdict the filter should return:
+  //   allow  — clean
+  //   review — suspicious; DELIVERED and tagged `needs-review` in GHL
+  //   block  — confident spam; dropped (decoy 200)
   const cases = [
     {
       label: 'QuoteForm / ServiceLeadForm / InlineLeadForm  (email required)',
       endpoint: '/api/send-quote',
+      expect: 'allow',
       payload: {
         name: 'John Smith', email: 'john.smith@gmail.com', phone: '07700900123',
         postcode: 'WA15 9AB', service_type: 'Roof Repair', message: 'My roof is leaking after the storm.',
@@ -198,6 +163,7 @@ function replayFilter() {
     {
       label: 'AreaHero / ServiceHero  (email included)',
       endpoint: '/api/send-quote',
+      expect: 'allow',
       payload: {
         name: 'Sarah Jones', email: 'sarah.jones@outlook.com', phone: '01614800123',
         postcode: 'WA16 6AA', service_type: 'Full Replacement', message: 'Please can someone call me.',
@@ -206,6 +172,7 @@ function replayFilter() {
     {
       label: 'ContactForm / EnhancedContactSection  (email REQUIRED)',
       endpoint: '/api/send-contact',
+      expect: 'allow',
       payload: {
         name: 'David Wilson', email: 'dave.wilson@btinternet.com', phone: '07700900456',
         subject: 'General enquiry', message: 'Do you cover Sandbach? Postcode: CW11 4NE',
@@ -214,6 +181,7 @@ function replayFilter() {
     {
       label: 'Special offer page  (email included)',
       endpoint: '/api/send-special-offer',
+      expect: 'allow',
       payload: {
         name: 'Michael Brown', email: 'michael.brown@yahoo.co.uk', phone: '07700900789',
         postcode: 'CW11 4NE', serviceNeeded: 'Roof Inspection', message: 'Interested in the offer.',
@@ -225,53 +193,114 @@ function replayFilter() {
       // proves the filter is not simply "always true".
       label: 'CONTROL: genuine lead, no email at all (must pass)',
       endpoint: '/api/send-quote',
+      expect: 'allow',
       payload: {
         name: 'Emma Taylor', phone: '07700900321',
         postcode: 'SK9 1AA', message: 'My roof is leaking, please call me.',
       },
     },
     {
-      // The URL rule working as DESIGNED: a real URL pasted into free text.
-      // Dropping this is correct behaviour, not the bug.
-      label: 'CONTROL: message contains a real URL (correctly dropped)',
+      // A customer describing how they found the business. The OLD filter
+      // destroyed this lead; it is the single most common false positive.
+      label: 'CONTROL: "I saw your marketing leaflet" (real customer — must NOT be dropped)',
       endpoint: '/api/send-quote',
-      expect: 'drop',
+      expect: 'review',
+      payload: {
+        name: 'Helen Marsh', email: 'helen.marsh@gmail.com', phone: '07700900199',
+        postcode: 'CW11 4NE', message: 'I saw your marketing leaflet through the door and wanted a quote.',
+      },
+    },
+    {
+      // A customer naming the directory they found the business on. The OLD
+      // filter read the domain as link spam and destroyed the lead.
+      label: 'CONTROL: "I found you on checkatrade.co.uk" (real customer — must NOT be dropped)',
+      endpoint: '/api/send-quote',
+      expect: 'review',
+      payload: {
+        name: 'Ruth Almond', email: 'ruth@almond.me.uk', phone: '07700900188',
+        postcode: 'WA16 6AA', message: 'I found you on checkatrade.co.uk and would like a survey.',
+      },
+    },
+    {
+      // One link, no pitch language. Delivered with a flag rather than dropped:
+      // a single domain is common in genuine enquiries (photos, a landlord's
+      // own site) and is not on its own evidence of spam.
+      label: 'Single link in message (delivered + flagged, not dropped)',
+      endpoint: '/api/send-quote',
+      expect: 'review',
       payload: {
         name: 'Emma Taylor', phone: '07700900321',
         postcode: 'SK9 1AA', message: 'Please visit www.cheap-roofs-now.com for a better price.',
       },
     },
+    {
+      // Confident spam: an unambiguous second-person sales pitch.
+      label: 'CONTROL: B2B solicitation pitch (correctly dropped)',
+      endpoint: '/api/send-quote',
+      expect: 'block',
+      payload: {
+        name: 'Marketer', phone: '07700900321',
+        postcode: 'SK9 1AA', message: 'We provide estimating support and can price more projects for you.',
+      },
+    },
+    {
+      // Confident spam: a link shortener never appears in a genuine enquiry.
+      label: 'CONTROL: URL shortener (correctly dropped)',
+      endpoint: '/api/send-quote',
+      expect: 'block',
+      payload: {
+        name: 'Neil Bishop', phone: '07700900321',
+        postcode: 'SK9 1AA', message: 'Great offer here: https://bit.ly/x9k2p',
+      },
+    },
   ];
 
-  let falsePositives = 0;
-  let correctDrops = 0;
+  const tally = { allow: 0, review: 0, block: 0 };
+  const falsePositives = []; // expected a delivery, got 'block' — a destroyed lead
+  const misfiled = []; // allow/review mix-up — nothing lost either way
+  const missed = []; // expected 'block', got through — spam admitted
+
   for (const c of cases) {
-    const hits = check(c.payload);
-    const isDrop = hits.length > 0;
-    const expected = c.expect || 'pass';
-    const isFalsePositive = isDrop && expected === 'pass';
-    const isCorrectDrop = isDrop && expected === 'drop';
-    if (isFalsePositive) falsePositives += 1;
-    if (isCorrectDrop) correctDrops += 1;
+    const { verdict, reasons } = filter.assessSubmission(c.payload);
+    tally[verdict] += 1;
 
-    const verdict = isFalsePositive
-      ? bad('✘ FALSE POSITIVE — real lead dropped (fake success, never reaches GHL/SMTP)')
-      : isCorrectDrop
-        ? ok('✔ correctly dropped (rule works as designed)')
-        : ok('✔ PASSES');
-    console.log(`\n  ${verdict}  ${C.bold}${c.label}${C.reset}`);
-    console.log(`    ${C.dim}→ POST ${c.endpoint}${C.reset}`);
-    if (isDrop) {
-      for (const h of [...new Set(hits)]) console.log(`      ${(isFalsePositive ? bad('•') : C.dim + '•')} ${h}`);
+    let headline;
+    if (verdict === c.expect) {
+      if (verdict === 'block') headline = ok('✔ correctly dropped (rule works as designed)');
+      else if (verdict === 'review') headline = warn('✔ DELIVERED + flagged `needs-review` in GHL (a human decides)');
+      else headline = ok('✔ PASSES clean');
+    } else if (verdict === 'block') {
+      falsePositives.push(c);
+      headline = bad('✘ FALSE POSITIVE — real lead dropped (fake success, never reaches GHL/SMTP)');
+    } else if (c.expect === 'block') {
+      missed.push(c);
+      headline = warn(`⚠ MISSED SPAM — admitted as ${verdict.toUpperCase()} (annoying, not severe)`);
+    } else {
+      misfiled.push(c);
+      headline = warn(`⚠ mis-tiered — got ${verdict.toUpperCase()}, expected ${c.expect.toUpperCase()} (no lead lost)`);
     }
+
+    console.log(`\n  ${headline}  ${C.bold}${c.label}${C.reset}`);
+    console.log(`    ${C.dim}→ POST ${c.endpoint}${C.reset}`);
+    if (reasons.length) console.log(`      ${C.dim}• ${reasons.join(', ')}${C.reset}`);
   }
 
-  console.log(`\n  ${C.bold}${falsePositives} of ${cases.length} realistic submissions are wrongly discarded; ${correctDrops} dropped correctly.${C.reset}`);
-  if (falsePositives > 0) {
-    console.log(`  ${warn('Every dropped case returns HTTP 200 {"success":true} — the browser shows a')}`);
-    console.log(`  ${warn('green confirmation while the lead is discarded before GHL, SMTP, and the audit log.')}`);
+  console.log(
+    `\n  ${C.bold}${cases.length} realistic submissions: ` +
+      `${tally.allow} allow / ${tally.review} review / ${tally.block} block${C.reset}`,
+  );
+  console.log(
+    `  ${C.bold}${falsePositives.length} wrongly discarded; ${missed.length} missed spam.${C.reset}`,
+  );
+  if (falsePositives.length === 0) {
+    console.log(`  ${ok('No genuine lead is dropped by the spam filter.')}`);
   }
-  return { falsePositives, correctDrops, total: cases.length };
+  if (tally.review > 0) {
+    console.log(`  ${C.dim}A 'review' verdict delivers the lead normally and tags it \`needs-review\` in GHL.`);
+    console.log(`  Neither verdict returns a bare success without recording it — every path writes to`);
+    console.log(`  the lead-pipeline audit log.${C.reset}`);
+  }
+  return { falsePositives: falsePositives.length, missed: missed.length, misfiled: misfiled.length, tally, total: cases.length };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -465,7 +494,10 @@ async function probeEndpoint() {
     console.log(`  ${bad(`${replay.falsePositives}/${replay.total} realistic leads are wrongly discarded by lib/spam-filter.ts.`)}`);
     console.log(`  ${C.bold}This alone explains leads reaching neither GHL nor the notify inbox.${C.reset}`);
   } else if (replay) {
-    console.log(`  ${ok('Spam filter passes all realistic payloads.')}`);
+    console.log(`  ${ok(`Spam filter drops no realistic lead (${replay.tally.allow} clean, ${replay.tally.review} flagged for review, ${replay.tally.block} blocked).`)}`);
+    if (replay.missed > 0) {
+      console.log(`  ${warn(`${replay.missed} spam payload(s) were admitted — a minor annoyance, not a lost lead.`)}`);
+    }
   }
   if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
     console.log(`  ${bad('SMTP not configured — email delivery will fail separately even once the filter is fixed.')}`);

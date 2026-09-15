@@ -74,7 +74,14 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const gadsConvId = process.env.NEXT_PUBLIC_GADS_CONV_ID || 'AW-7693225904';
+  // `gtag('config', X)` takes an ACCOUNT/conversion id (`AW-7693225904`), never a
+  // labelled conversion target. NEXT_PUBLIC_GADS_CONV_ID must hold the labelled
+  // form (`AW-7693225904/AbC-D_ef`) for conversions to register at all — so pass
+  // only the half before the slash. This is a no-op while the var holds a bare id
+  // (splitting on "/" returns it unchanged), and prevents feeding gtag a
+  // malformed id the moment a real label is configured. components/Analytics.tsx
+  // already does this for its own `gtag('config')` call.
+  const gadsConvId = (process.env.NEXT_PUBLIC_GADS_CONV_ID || 'AW-7693225904').split('/')[0].trim();
   return (
     <html lang="en-GB" className={poppins.variable}>
       <head>

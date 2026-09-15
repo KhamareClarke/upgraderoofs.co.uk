@@ -26,6 +26,31 @@ const GADS_CONV_ID   = process.env.NEXT_PUBLIC_GADS_CONV_ID   || 'AW-7693225904'
 // back to the lead-form ID, else taps get mislabelled as full lead-form conversions.
 const GADS_CLICK_CONV_ID = process.env.NEXT_PUBLIC_GADS_CLICK_CONV_ID || null;
 
+/**
+ * Distinct Google Ads ACCOUNT ids to initialise, derived from the configured
+ * conversion targets. Declared after GADS_CLICK_CONV_ID — it reads all three.
+ *
+ * `gtag('config', ...)` takes an account id (`AW-7693225904`) or a measurement
+ * id (`G-XXXX`) — NOT a labelled conversion target. Passing the full
+ * `AW-7693225904/abc123` value to `config` is invalid: the label belongs only in
+ * the `send_to` of a conversion *event*, which lib/tracking.ts already sends.
+ *
+ * The old code ran `gtag('config', GADS_CONV_ID)` with the whole target. That
+ * looked harmless only because the fallback was a bare account id, so it merely
+ * configured the same account twice. As soon as NEXT_PUBLIC_GADS_CONV_ID holds a
+ * real `AW-.../label` value — which is exactly what it must hold for conversions
+ * to register at all — that line would have fed gtag a malformed id.
+ */
+const GADS_ACCOUNT_IDS = Array.from(
+  new Set(
+    [GADS_ID, GADS_CONV_ID, GADS_CLICK_CONV_ID]
+      .filter((value): value is string => Boolean(value))
+      // Keep only the account half; drop everything from the "/" onward.
+      .map((value) => value.split('/')[0].trim())
+      .filter((value) => /^AW-\d+$/.test(value)),
+  ),
+);
+
 export function Analytics() {
   // Capture gclid/gbraid/wbraid from the landing URL into localStorage so
   // form submissions can attach it for Google Ads offline conversions.
@@ -95,17 +120,16 @@ export function Analytics() {
       </Script>
 
       {/* ── 4. Google Ads global site tag ────────────────────────────────
-          Two configs:
-          - AW-7693225904 : account-level lead-form conversion container
-            ("Submit lead form") · the GADS_ID/GADS_CONV_ID fallback.
-          - GADS_CONV_ID  : live lead-form action (NEXT_PUBLIC_GADS_CONV_ID).
-          - GADS_CLICK_CONV_ID : phone/WhatsApp tap action, only when set. */}
+          Initialises each distinct Ads ACCOUNT once. The conversion labels live
+          in the `send_to` of the conversion events fired from lib/tracking.ts —
+          they must not appear here. See GADS_ACCOUNT_IDS above. */}
       <Script id="google-ads-config" strategy="afterInteractive">
-        {`
-          gtag('config', '${GADS_ID}');
-          gtag('config', '${GADS_CONV_ID}');
-          ${GADS_CLICK_CONV_ID ? `gtag('config', '${GADS_CLICK_CONV_ID}');` : `// no dedicated click-conversion ID configured · tap conversions disabled`}
-        `}
+        {`${GADS_ACCOUNT_IDS.map((id) => `gtag('config', '${id}');`).join('\n          ')}
+          ${
+            GADS_CLICK_CONV_ID
+              ? '// phone/WhatsApp tap conversions enabled (lib/tracking.ts)'
+              : '// no dedicated click-conversion ID configured · tap conversions disabled'
+          }`}
       </Script>
     </>
   );

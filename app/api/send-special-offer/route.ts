@@ -4,10 +4,13 @@ import { pushLeadToGhl } from '@/lib/ghl';
 import { FORM_FIELD_RULES, validateLeadFields } from '@/lib/lead-validation';
 import { verifyTurnstile } from '@/lib/turnstile';
 import { logLeadSubmission } from '@/lib/lead-logger';
-import { isSpamSubmission } from '@/lib/spam-filter';
+import { assessSubmission } from '@/lib/spam-filter';
 import { notifyOwnerOfLead } from '@/lib/sms-notify';
 import { getMailConfig, mailErrorResponseMessage } from '@/lib/mail';
 import { checkRateLimit, getClientIp, isTooFast } from '@/lib/rate-limit';
+import { recordPipelineEvent, recordSilentDrop } from '@/lib/lead-health';
+
+const ROUTE = 'send-special-offer';
 
 const ghlOpps = require('@/lib/ghl/opportunities.js');
 
@@ -51,14 +54,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // B2B / link spam filter — drop solicitation pitches and scraper artifacts
-    // silently so the sender doesn't loop, and never dispatch them to GHL/mail.
-    if (isSpamSubmission(formData)) {
-      console.log(`[spam] special-offer lead blocked by B2B/link filter — name="${formData.name}"`);
+    // Spam assessment — three-valued, deliberately asymmetric. Only a confident
+    // 'block' is dropped (with a decoy 200 so bots can't adapt). A 'review'
+    // verdict delivers the lead normally and tags it `needs-review` in GHL, so a
+    // human decides. Dropping a real customer is far worse than admitting spam —
+    // see the header of lib/spam-filter.ts.
+    const spam = assessSubmission(formData);
+    if (spam.verdict === 'block') {
+      recordSilentDrop(
+        ROUTE,
+        `rejected-by-filter: ${spam.reasons.join(', ')}`,
+        `name="${formData.name}"`,
+      );
       return NextResponse.json(
         { success: true, message: 'Special offer request received' },
         { status: 200 }
       );
+    }
+    const needsReview = spam.verdict === 'review';
+    if (needsReview) {
+      void recordPipelineEvent({
+        source: ROUTE,
+        channel: 'filter',
+        ok: true,
+        detail: `flagged-for-review: ${spam.reasons.join(', ')}`,
+      });
     }
 
     // Rate limiting — max 3 submissions per IP per hour
@@ -82,7 +102,7 @@ export async function POST(request: NextRequest) {
     // Timing heuristic — reject a repeat submission from the same identity
     // arriving faster than a human can (scripted/retry bots). Fake success.
     if (isTooFast(clientIp, 3)) {
-      console.log(`[spam] special-offer lead too fast from ${clientIp}`);
+      recordSilentDrop(ROUTE, 'submitted too fast', `ip=${clientIp}`);
       return NextResponse.json(
         { success: true, message: 'Special offer request received' },
         { status: 200 }
@@ -113,7 +133,11 @@ export async function POST(request: NextRequest) {
     // have no Supabase write to recover it from.
     const spamReasons = validateLeadFields(formData, FORM_FIELD_RULES.specialOffer);
     if (spamReasons.length > 0) {
-      console.log(`[spam] special-offer lead rejected (${spamReasons.join('; ')}) — name="${formData.name}" phone="${formData.phone}" postcode="${formData.postcode || ''}"`);
+      recordSilentDrop(
+        ROUTE,
+        `validation: ${spamReasons.join('; ')}`,
+        `name="${formData.name}" phone="${formData.phone}" postcode="${formData.postcode || ''}"`,
+      );
       return NextResponse.json(
         { success: true, message: 'Special offer request received' },
         { status: 200 }
@@ -144,13 +168,24 @@ export async function POST(request: NextRequest) {
       phone: formData.phone,
       postcode: formData.postcode,
       gclid: formData.gclid,
-      tags: ['website-lead', 'special-offer', ...(formData.gclid ? ['google-ads-lead'] : [])],
+      tags: [
+        'website-lead',
+        'special-offer',
+        ...(formData.gclid ? ['google-ads-lead'] : []),
+        ...(needsReview ? ['needs-review'] : []),
+      ],
       source: 'special_offer',
       notes: `Service needed: ${formData.serviceNeeded || 'n/a'}\nRoof type: ${formData.roofType || 'n/a'}\nSame-day callback: ${formData.sameDayCallback ? 'Yes' : 'No'}\n\n${formData.message || ''}`,
       customFields: {
         ...(formData.roofType ? { roof_type: formData.roofType } : {}),
         ...(formData.serviceNeeded ? { service_needed: formData.serviceNeeded } : {}),
       },
+    });
+    void recordPipelineEvent({
+      source: ROUTE,
+      channel: 'ghl',
+      ok: !!ghlContactId,
+      detail: ghlContactId ? undefined : 'upsert failed — lead not in CRM',
     });
     if (!ghlContactId) {
       console.error(
@@ -216,6 +251,13 @@ export async function POST(request: NextRequest) {
         mailErr,
       );
     }
+
+    void recordPipelineEvent({
+      source: ROUTE,
+      channel: 'email',
+      ok: emailDelivered,
+      detail: emailDelivered ? undefined : emailError || 'SMTP send failed',
+    });
 
     // Delivery integrity — a 200 here is a promise that the lead was captured.
     // GHL and SMTP are independent sinks, so the lead survives if EITHER took

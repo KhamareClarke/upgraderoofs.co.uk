@@ -6,8 +6,11 @@ import { checkRateLimit, getClientIp, isTooFast } from '@/lib/rate-limit';
 import { FORM_FIELD_RULES, validateLeadFields, sanitizeLeadName } from '@/lib/lead-validation';
 import { verifyTurnstile } from '@/lib/turnstile';
 import { logLeadSubmission } from '@/lib/lead-logger';
-import { isSpamSubmission } from '@/lib/spam-filter';
+import { assessSubmission } from '@/lib/spam-filter';
 import { notifyOwnerOfLead } from '@/lib/sms-notify';
+import { recordPipelineEvent, recordSilentDrop } from '@/lib/lead-health';
+
+const ROUTE = 'send-quote';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,14 +25,31 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // B2B / link spam filter — drop solicitation pitches and scraper artifacts
-    // silently so the sender doesn't loop, and never dispatch them to GHL/mail.
-    if (isSpamSubmission(formData)) {
-      console.log(`[spam] quote lead blocked by B2B/link filter — name="${formData.name}"`);
+    // Spam assessment — three-valued, deliberately asymmetric. Only a confident
+    // 'block' is dropped (with a decoy 200 so bots can't adapt). A 'review'
+    // verdict delivers the lead normally and tags it `needs-review` in GHL, so a
+    // human decides. Dropping a real customer is far worse than admitting spam —
+    // see the header of lib/spam-filter.ts.
+    const spam = assessSubmission(formData);
+    if (spam.verdict === 'block') {
+      recordSilentDrop(
+        ROUTE,
+        `rejected-by-filter: ${spam.reasons.join(', ')}`,
+        `name="${formData.name}"`,
+      );
       return NextResponse.json(
         { success: true, message: 'Quote request received' },
         { status: 200 }
       );
+    }
+    const needsReview = spam.verdict === 'review';
+    if (needsReview) {
+      void recordPipelineEvent({
+        source: ROUTE,
+        channel: 'filter',
+        ok: true,
+        detail: `flagged-for-review: ${spam.reasons.join(', ')}`,
+      });
     }
 
     // Rate limiting — max 3 submissions per IP per hour
@@ -62,7 +82,7 @@ export async function POST(request: NextRequest) {
     // arriving faster than a human can re-read and re-submit (retry/scripted
     // bots). Fake success so bots can't tell they've been filtered.
     if (isTooFast(clientIp, 3)) {
-      console.log(`[spam] quote lead too fast from ${clientIp}`);
+      recordSilentDrop(ROUTE, 'submitted too fast', `ip=${clientIp}`);
       return NextResponse.json(
         { success: true, message: 'Quote request received' },
         { status: 200 }
@@ -85,7 +105,11 @@ export async function POST(request: NextRequest) {
     // through. Return a fake success so bots can't tell they've been filtered.
     const spamReasons = validateLeadFields(formData, FORM_FIELD_RULES.quote);
     if (spamReasons.length > 0) {
-      console.log(`[spam] quote lead rejected (${spamReasons.join('; ')}) — name="${formData.name}" phone="${formData.phone}" postcode="${formData.postcode}"`);
+      recordSilentDrop(
+        ROUTE,
+        `validation: ${spamReasons.join('; ')}`,
+        `name="${formData.name}" phone="${formData.phone}" postcode="${formData.postcode}"`,
+      );
       return NextResponse.json(
         { success: true, message: 'Quote request received' },
         { status: 200 }
@@ -119,13 +143,24 @@ export async function POST(request: NextRequest) {
       phone: formData.phone,
       postcode: formData.postcode,
       gclid: formData.gclid,
-      tags: ['website-lead', 'cheshire-roof-quote', ...(formData.gclid ? ['google-ads-lead'] : [])],
+      tags: [
+        'website-lead',
+        'cheshire-roof-quote',
+        ...(formData.gclid ? ['google-ads-lead'] : []),
+        ...(needsReview ? ['needs-review'] : []),
+      ],
       source: 'quote_form',
       notes: `Service: ${formData.service_type || 'n/a'}\nRoof type: ${formData.roof_type || 'n/a'}\n\n${formData.message || ''}`,
       customFields: {
         ...(formData.service_type ? { service_type: formData.service_type } : {}),
         ...(formData.roof_type ? { roof_type: formData.roof_type } : {}),
       },
+    });
+    void recordPipelineEvent({
+      source: ROUTE,
+      channel: 'ghl',
+      ok: !!ghlContactId,
+      detail: ghlContactId ? undefined : 'upsert failed — lead not in CRM',
     });
     if (!ghlContactId) {
       console.error(
@@ -189,6 +224,13 @@ export async function POST(request: NextRequest) {
         mailErr,
       );
     }
+
+    void recordPipelineEvent({
+      source: ROUTE,
+      channel: 'email',
+      ok: emailDelivered,
+      detail: emailDelivered ? undefined : emailError || 'SMTP send failed',
+    });
 
     // Delivery integrity — a 200 here is a promise that the lead was captured.
     // GHL and SMTP are independent sinks, so the lead survives if EITHER took

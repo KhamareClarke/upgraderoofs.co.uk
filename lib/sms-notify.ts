@@ -44,9 +44,22 @@
  *   SMS_RECIPIENT_NAME   display name for the owner contact (default "Marcus")
  */
 
+import { recordPipelineEvent } from '@/lib/lead-health';
+
 const GHL_BASE = 'https://services.leadconnectorhq.com';
 const API_VERSION = '2021-07-28';
 const TIMEOUT_MS = 8000;
+
+/**
+ * Whether the "not configured" outcome has already been recorded this process.
+ *
+ * Every branch below records its outcome so a silent SMS failure becomes
+ * visible (see lib/lead-health.ts). The unconfigured branch is the exception:
+ * it is a static misconfiguration, not a per-lead event, so it is recorded once
+ * rather than on every submission — otherwise an unconfigured deploy would bury
+ * the health log in identical rows and alert on each one.
+ */
+let unconfiguredRecorded = false;
 
 /** Fields a lead route can hand over for the notification body. */
 export interface LeadNotification {
@@ -180,6 +193,15 @@ export async function notifyOwnerOfLead(lead: LeadNotification): Promise<SmsResu
         '(and SMS_LOCATION_ID if the SMS account differs from the CRM account). ' +
         'Check provisioning with: node scripts/probe-sms-account.js',
     );
+    if (!unconfiguredRecorded) {
+      unconfiguredRecorded = true;
+      void recordPipelineEvent({
+        source: lead.source,
+        channel: 'sms',
+        ok: false,
+        detail: 'not configured (SMS_SENDER_PHONE / MARCUS_PHONE missing)',
+      });
+    }
     return { ok: false, sent: false, reason: 'not configured' };
   }
 
@@ -205,6 +227,7 @@ export async function notifyOwnerOfLead(lead: LeadNotification): Promise<SmsResu
           ? `contact upsert failed (HTTP ${upsert.status})${upsert.error ? `: ${upsert.error}` : ''}`
           : `contact upsert returned HTTP ${upsert.status} but no contact id — unexpected response body`;
     console.error(`[sms] owner notification FAILED — ${reason}`);
+    void recordPipelineEvent({ source: lead.source, channel: 'sms', ok: false, detail: reason });
     return { ok: false, sent: false, reason };
   }
 
@@ -224,11 +247,13 @@ export async function notifyOwnerOfLead(lead: LeadNotification): Promise<SmsResu
         ? 'send forbidden — token lacks the conversations/messages scope'
         : `send failed (HTTP ${send.status})${data?.message ? `: ${data.message}` : send.error ? `: ${send.error}` : ''}`;
     console.error(`[sms] owner notification FAILED — ${reason}`);
+    void recordPipelineEvent({ source: lead.source, channel: 'sms', ok: false, detail: reason });
     return { ok: false, sent: false, reason, contactId };
   }
 
   const result = send.data as { conversationId?: string; messageId?: string } | null;
   console.log(`[sms] owner notified — messageId=${result?.messageId || 'n/a'}`);
+  void recordPipelineEvent({ source: lead.source, channel: 'sms', ok: true });
   return {
     ok: true,
     sent: true,
