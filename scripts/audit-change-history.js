@@ -10,6 +10,41 @@
  * operation, and the changed fields.
  *
  * Run:  node scripts/audit-change-history.js [YYYY-MM-DD]
+ *
+ * ⚠ KNOWN BREAKAGE — as written this script cannot return rows. Every claim
+ * below was verified against the live API (v22, 2026-09-16), not inferred.
+ * The query further down is rejected before any rows are considered:
+ *
+ *     WHERE change_event.change_date_time >= '2026-08-01 00:00:00'
+ *     → HTTP 400  changeEventError=CHANGE_DATE_RANGE_INFINITE
+ *       "missing filters on change_event.change_date_time or is filtering on
+ *        change_event.change_date_time with an infinite range"
+ *
+ * Two independent causes, both confirmed by probe:
+ *
+ *   1. change_event requires a BOUNDED window. `>=` is an open ("infinite")
+ *      range and is rejected; so is omitting the filter entirely. Only
+ *      `DURING LAST_7_DAYS` and `DURING LAST_14_DAYS` are accepted —
+ *      `DURING LAST_30_DAYS` fails with changeEventError=START_DATE_TOO_OLD.
+ *   2. Even on an accepted window, change_event returns ZERO rows for this
+ *      account (LAST_7_DAYS → 0, LAST_14_DAYS → 0). It carries no history
+ *      here, so no choice of fields can make this script produce output.
+ *
+ * change_status is the resource that DOES have data (73 rows in LAST_14_DAYS).
+ * Rebuilding on it means knowing these:
+ *
+ *   - The date field is `change_status.last_change_date_time`. The obvious
+ *     `change_status.change_date_time` does not exist → UNRECOGNIZED_FIELD.
+ *   - The bounded-window rule above applies here too.
+ *   - There is NO `change_status.conversion_action` pointer
+ *     (→ UNRECOGNIZED_FIELD), so a change cannot be attributed to a conversion
+ *     action by field at all. The changed resource is identifiable only from the
+ *     numeric segments of change_status.resource_name — and note that
+ *     resource_name names the changeStatus resource, NOT the changed resource,
+ *     so ids must not be matched against it directly.
+ *   - `change_event.change_resource_type = 'CONVERSION_ACTION'` is not merely
+ *     empty, it is invalid: queryError=BAD_ENUM_CONSTANT — that value is not in
+ *     ChangeEventResourceType.
  */
 
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env.local'), quiet: true });
