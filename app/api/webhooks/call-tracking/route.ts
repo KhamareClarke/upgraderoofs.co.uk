@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { secretMatches, readProvidedSecret } from '@/lib/shared-secret';
 import { emitFleetIngest } from '@/lib/fleet-ingest';
 import { pushLeadToGhl } from '@/lib/ghl';
 
@@ -19,10 +20,21 @@ import { pushLeadToGhl } from '@/lib/ghl';
  * flat + nested shapes). The source is classified PAID when a gclid is present
  * or the provider reports an ads source, otherwise ORGANIC.
  *
- * Security: an optional shared secret guards the endpoint. Set
+ * Security: a shared secret guards the endpoint. Set
  * CALL_TRACKING_WEBHOOK_SECRET and send it as a header (`x-call-secret`),
- * a query param (`?secret=`), or a body field (`secret`). When unset the
- * endpoint accepts all callers (useful for bring-up); set it in production.
+ * a query param (`?secret=`), or a body field (`secret`).
+ *
+ * When the var is UNSET the endpoint accepts every caller, and that is the
+ * state it shipped in — so the guard existed but had never once been exercised.
+ * Unset now logs a loud warning rather than failing silently. It deliberately
+ * does NOT fail closed: no provider is configured yet, and rejecting call
+ * events outright on a missing env var would be a worse failure than an open
+ * endpoint on a route that only creates CRM contacts.
+ *
+ * The comparison is constant-time. `provided !== expected` short-circuits on
+ * the first differing byte, which leaks how much of a guessed secret was
+ * correct; both sides are SHA-256'd first so the buffers are equal-length
+ * (timingSafeEqual throws otherwise, and a length mismatch is itself a signal).
  *
  * Expected typical payload shapes (all handled):
  *   CallRail:    { answered, duration, start_time, customer_phone_number,
@@ -112,16 +124,26 @@ export async function POST(request: NextRequest) {
     return jsonError('Invalid JSON body', 400);
   }
 
-  // Optional shared-secret verification (set CALL_TRACKING_WEBHOOK_SECRET).
+  // Shared-secret verification (set CALL_TRACKING_WEBHOOK_SECRET).
   const expectedSecret = (process.env.CALL_TRACKING_WEBHOOK_SECRET || '').trim();
   if (expectedSecret) {
-    const provided =
-      request.headers.get('x-call-secret') ||
-      new URL(request.url).searchParams.get('secret') ||
-      pick(body, ['secret']);
-    if (provided !== expectedSecret) {
+    const provided = readProvidedSecret(request, {
+      headers: ['x-call-secret'],
+      queryParam: 'secret',
+      body,
+      bodyFields: [['secret']],
+    });
+    if (!secretMatches(provided, expectedSecret)) {
       return jsonError('Unauthorized', 401);
     }
+  } else {
+    // The endpoint is openly accepting call events. Logged on every request
+    // because this is the exact condition that made the guard inert: the route
+    // looks protected in source, and nothing anywhere said otherwise.
+    console.warn(
+      '[call-tracking] CALL_TRACKING_WEBHOOK_SECRET is unset — this endpoint is ' +
+        'accepting unauthenticated POSTs. Set it in Vercel and redeploy.',
+    );
   }
 
   // Tolerant extraction across CallRail / Twilio / Google Forwarding shapes.

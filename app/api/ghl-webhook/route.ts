@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { emitFleetIngest } from '@/lib/fleet-ingest';
+import { secretMatches, readProvidedSecret } from '@/lib/shared-secret';
 
 const ghl = require('@/lib/ghl-client.js');
 
@@ -257,15 +258,29 @@ export async function POST(request: NextRequest) {
 
   // Optional shared-secret verification (set GHL_WEBHOOK_SECRET and send it as
   // a header or ?secret= from the GHL workflow).
+  //
+  // Comparison is constant-time via the shared helper. Behaviour when the var is
+  // UNSET is unchanged and deliberately stays fail-OPEN: a live GHL workflow
+  // calls this route, so refusing every request on a missing env var would take
+  // the conversion pipeline down — the opposite of the fix. The warning exists
+  // so an unset var cannot be silent, which is how the call-tracking guard went
+  // inert for its entire life.
   const expectedSecret = (process.env.GHL_WEBHOOK_SECRET || '').trim();
   if (expectedSecret) {
-    const provided =
-      request.headers.get('x-ghl-secret') ||
-      new URL(request.url).searchParams.get('secret') ||
-      pick(body, ['secret']);
-    if (provided !== expectedSecret) {
+    const provided = readProvidedSecret(request, {
+      headers: ['x-ghl-secret'],
+      queryParam: 'secret',
+      body,
+      bodyFields: [['secret']],
+    });
+    if (!secretMatches(provided, expectedSecret)) {
       return jsonError('Unauthorized', 401);
     }
+  } else {
+    console.warn(
+      '[ghl-webhook] GHL_WEBHOOK_SECRET is unset — this endpoint is accepting ' +
+        'unauthenticated POSTs. Set it in Vercel and redeploy.',
+    );
   }
 
   const stage = pick(body, ['stage'], ['opportunity', 'stage', 'name'], ['opportunity', 'stage'], ['new_stage'], ['status']);
