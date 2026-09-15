@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pushLeadToGhl } from '@/lib/ghl';
 import { emitFleetIngest } from '@/lib/fleet-ingest';
+import { requireGhlProxySecret } from '@/lib/ghl-proxy-auth';
 
 const ghl = require('@/lib/ghl-client.js');
 
@@ -11,6 +12,10 @@ const ghl = require('@/lib/ghl-client.js');
  * Books a roof-inspection appointment into a GHL Calendar. Upserts the
  * contact first (so the appointment is linked to a CRM record, with gclid
  * for attribution), then creates the appointment.
+ *
+ * Auth: shared secret (GHL_PROXY_SECRET) — see lib/ghl-proxy-auth.ts. Unguarded
+ * until 2026-09-15, so an anonymous caller could book appointments against any
+ * calendarId and fill the calendar with junk.
  *
  * Body:
  *   {
@@ -28,6 +33,10 @@ const ghl = require('@/lib/ghl-client.js');
  *   }
  */
 export async function POST(request: NextRequest) {
+  // Auth first — nothing below is reachable without the shared secret.
+  const denied = requireGhlProxySecret(request);
+  if (denied) return denied;
+
   if (!ghl.isConfigured()) {
     return NextResponse.json({ success: false, error: 'GHL not configured' }, { status: 503 });
   }

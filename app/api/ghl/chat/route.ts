@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pushLeadToGhl } from '@/lib/ghl';
 import { emitFleetIngest } from '@/lib/fleet-ingest';
+import { requireGhlProxySecret } from '@/lib/ghl-proxy-auth';
 
 const ghl = require('@/lib/ghl-client.js');
 
@@ -13,6 +14,10 @@ const ghl = require('@/lib/ghl-client.js');
  * creates the conversation, then posts an inbound message. GHL can then
  * route it to SMS / the Conversations inbox for the team to answer.
  *
+ * Auth: shared secret (GHL_PROXY_SECRET) — see lib/ghl-proxy-auth.ts. This route
+ * had NO guard until 2026-09-15, so any anonymous caller could create contacts
+ * and send SMS through our GHL account by setting `type: 'SMS'`.
+ *
  * Body:
  *   {
  *     name:     string (required)
@@ -24,6 +29,10 @@ const ghl = require('@/lib/ghl-client.js');
  *   }
  */
 export async function POST(request: NextRequest) {
+  // Auth first — nothing below is reachable without the shared secret.
+  const denied = requireGhlProxySecret(request);
+  if (denied) return denied;
+
   if (!ghl.isConfigured()) {
     return NextResponse.json({ success: false, error: 'GHL not configured' }, { status: 503 });
   }

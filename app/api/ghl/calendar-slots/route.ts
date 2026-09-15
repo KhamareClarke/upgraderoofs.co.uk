@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireGhlProxySecret } from '@/lib/ghl-proxy-auth';
 
 const ghl = require('@/lib/ghl-client.js');
 
@@ -13,8 +14,16 @@ const ghl = require('@/lib/ghl-client.js');
  *
  * If calendarId is omitted, lists the location's calendars so the caller
  * can discover the right one.
+ *
+ * Auth: shared secret (GHL_PROXY_SECRET) — see lib/ghl-proxy-auth.ts. Unguarded
+ * until 2026-09-15; read-only, but it proxies GHL with our token for any
+ * calendarId the caller names, so it is a quota-burn and enumeration surface.
  */
 export async function GET(request: NextRequest) {
+  // Auth first — nothing below is reachable without the shared secret.
+  const denied = requireGhlProxySecret(request);
+  if (denied) return denied;
+
   if (!ghl.isConfigured()) {
     return NextResponse.json({ success: false, error: 'GHL not configured' }, { status: 503 });
   }
