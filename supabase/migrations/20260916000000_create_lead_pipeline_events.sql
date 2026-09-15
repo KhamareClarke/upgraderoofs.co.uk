@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS lead_pipeline_events (
   created_at  timestamptz NOT NULL DEFAULT now(),
   -- Route label that produced the outcome, e.g. 'send-quote'. Not user input.
   source      text        NOT NULL,
-  -- One of: ghl | email | sms | fleet | supabase | filter.
+  -- One of: ghl | ghl-note | email | sms | fleet | supabase | filter.
   -- Deliberately text, not an enum: adding a channel should not need a migration.
   channel     text        NOT NULL,
   ok          boolean     NOT NULL,
@@ -40,7 +40,7 @@ COMMENT ON TABLE lead_pipeline_events IS
   'Contains NO PII by design — read by the unauthenticated health endpoint.';
 
 COMMENT ON COLUMN lead_pipeline_events.channel IS
-  'ghl | email | sms | fleet | supabase | filter';
+  'ghl | ghl-note | email | sms | fleet | supabase | filter';
 
 -- The health check reads "recent rows, newest first, grouped by channel" and the
 -- staleness query filters on created_at alone, so this composite covers both.
