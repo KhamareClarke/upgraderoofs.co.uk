@@ -50,3 +50,6 @@ scripts/.indexing-state.json
 next-env.d.ts
 
 .vercel
+
+# Supabase CLI scratch (created by `supabase` invocations, e.g. --version)
+supabase/.temp/

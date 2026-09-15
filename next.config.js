@@ -18,7 +18,24 @@ const nextConfig = {
     dangerouslyAllowSVG: true,
   },
   compiler: {
-    removeConsole: process.env.NODE_ENV === 'production',
+    // Keep warn/error in production; drop only the chatty levels.
+    //
+    // This was `removeConsole: true`, which strips EVERY console call from the
+    // production bundle — including console.error. Verified against a real
+    // build: the string "[spam]" appeared 0 times in .next/server, as did the
+    // "[lead] GHL upsert failed — lead NOT in CRM" error.
+    //
+    // That is why a spam-filter bug silently discarded every lead carrying an
+    // email address for 19 days. The failure paths were correct and "logged",
+    // but the logging had been compiled out of production, so there was no
+    // signal to find — not a signal nobody looked at. A quiet week and a dead
+    // pipeline were genuinely indistinguishable.
+    //
+    // warn/error are low-volume by construction (they fire on failure, not on
+    // success), so keeping them costs nothing and makes Vercel logs, log drains
+    // and the `[lead-dropped]` prefix usable as an alerting source again.
+    removeConsole:
+      process.env.NODE_ENV === 'production' ? { exclude: ['error', 'warn'] } : false,
   },
   swcMinify: true,
   reactStrictMode: true,
