@@ -88,6 +88,17 @@ function isUrlLike(value: string): boolean {
   return URL_PATTERNS.some((re) => re.test(value));
 }
 
+// An email address is not a URL, but it always contains a `<label>.<tld>` run
+// that the TLD pattern above cannot help matching — so `isUrlLike('a@gmail.com')`
+// is true. Mask any embedded address before running URL detection over free
+// text, so a genuine enquiry that says "reply to me at a@b.com" is not mistaken
+// for link spam while a pasted URL still trips the rule.
+const EMAIL_LIKE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+
+function maskEmails(value: string): string {
+  return value.replace(EMAIL_LIKE, ' [email] ');
+}
+
 function hasB2bPitch(value: string): boolean {
   const text = value.toLowerCase();
   if (text.includes('seo')) return true;
@@ -133,16 +144,22 @@ export function isSpamSubmission(payload: object): boolean {
   if (SUSPICIOUS_NAME_PATTERNS.some((re) => re.test(name))) return true;
 
   // URL presence in name/phone/postcode — fields a human never puts a URL in.
-  for (const key of ['name', 'phone', 'postcode', 'email']) {
+  // The `email` field is deliberately excluded: an address is not a URL, yet its
+  // domain (`gmail.com`) always matches the TLD pattern, so checking it here
+  // discarded every submission that carried one — i.e. all of them.
+  for (const key of ['name', 'phone', 'postcode']) {
     const v = record[key];
     if (typeof v === 'string' && isUrlLike(v)) return true;
   }
 
   // B2B pitch + URL detection across every remaining string field
-  // (message, subject, service_type, roof_type, serviceNeeded, etc.).
+  // (message, subject, service_type, roof_type, serviceNeeded, etc.). Embedded
+  // email addresses are masked before URL matching, so free text that merely
+  // mentions an address is not mistaken for link spam.
   const all: string[] = [];
   collectStrings(payload, all);
-  for (const text of all) {
+  for (const raw of all) {
+    const text = maskEmails(raw);
     if (hasB2bPitch(text)) return true;
     if (isUrlLike(text)) return true;
   }
