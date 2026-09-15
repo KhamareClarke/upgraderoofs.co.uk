@@ -12,7 +12,15 @@
  *
  * All functions are non-throwing: a GHL outage must never lose a lead,
  * so failures are logged and swallowed (the caller still emails + saves).
+ *
+ * "Swallowed" means the LEAD survives, not that the failure is silent. Two
+ * things here carry data that exists nowhere else — the contact note (the
+ * customer's own enquiry text) and the contact itself — so when either fails
+ * the outcome is recorded via lib/lead-health, where it is durable and
+ * alertable rather than a console line on a rolling buffer.
  */
+
+import { recordPipelineEvent } from '@/lib/lead-health';
 
 const HOST = 'services.leadconnectorhq.com';
 const API_VERSION = '2021-07-28';
@@ -146,11 +154,76 @@ export async function pushLeadToGhl(input: GhlLeadInput): Promise<string | null>
     console.log(`[ghl] lead upserted → contact ${id} (tags: ${input.tags.join(', ')})`);
 
     // Attach the lead context as a contact note (separate endpoint — upsert
-    // rejects a 'notes' property). Non-blocking; failure here is harmless.
+    // rejects a 'notes' property).
+    //
+    // THIS IS THE ONLY PATH THE ENQUIRY TEXT TAKES INTO GHL. The `notes` string
+    // built by the lead routes carries the customer's own words; nothing else
+    // does. If this write is lost the contact still appears — name, phone, tags,
+    // gclid — so it reads as a perfectly healthy lead whose message is simply
+    // absent, which is indistinguishable from a customer who wrote nothing.
+    //
+    // It used to be fire-and-forget, with failures downgraded to console.warn
+    // and a comment calling them "harmless". They are not: the enquiry text has
+    // no second carrier, and none of the other legs (upsert, SMTP, SMS, the
+    // health endpoint) can tell a dropped note from a written one. A real lead's
+    // message was lost exactly this way and nothing anywhere recorded it.
+    //
+    // So: awaited, and its outcome recorded. Awaited for the same reason as the
+    // fleet-ingest and SMS calls — Vercel freezes the invocation once the
+    // response is returned, killing any fetch still in flight.
+    //
+    // A failed note still does NOT fail the lead. The contact exists and is
+    // worth keeping; only the loss is now visible.
     if (id && input.notes) {
-      ghlFetch(`/contacts/${encodeURIComponent(id)}/notes`, 'POST', c.token, { body: input.notes, userId: undefined })
-        .then(r => { if (r.status !== 200 && r.status !== 201) console.warn(`[ghl] note add returned ${r.status}`); })
-        .catch(err => console.warn('[ghl] note add failed:', err instanceof Error ? err.message : err));
+      const noteSource = input.source || 'website';
+      const noteStartedAt = Date.now();
+      try {
+        const noteRes = await ghlFetch(
+          `/contacts/${encodeURIComponent(id)}/notes`,
+          'POST',
+          c.token,
+          // `body` is the only required field on this endpoint; `userId` is
+          // optional (author attribution). This previously sent
+          // `userId: undefined`, which JSON.stringify drops — so the wire
+          // payload was already body-only, but the code implied an author was
+          // being set. Removed rather than supplied: a real userId would cost an
+          // extra API round trip per lead for attribution GHL already defaults
+          // to the token owner.
+          { body: input.notes },
+        );
+        const durationMs = Date.now() - noteStartedAt;
+        if (noteRes.status !== 200 && noteRes.status !== 201) {
+          console.error(`[ghl] ❌ NOTE WRITE REJECTED — HTTP ${noteRes.status} (contact ${id}) — the lead's message did NOT reach the CRM`);
+          console.error(`[ghl]    response   : ${JSON.stringify(noteRes.body)}`);
+          // Awaited: this record is the whole point of the fix, and an
+          // un-awaited write is exactly what Vercel's freeze kills. Safe to
+          // await because recordPipelineEvent never throws.
+          await recordPipelineEvent({
+            source: noteSource,
+            channel: 'ghl-note',
+            ok: false,
+            detail: `note-write-failed http=${noteRes.status}`,
+            durationMs,
+          });
+        } else {
+          await recordPipelineEvent({ source: noteSource, channel: 'ghl-note', ok: true, durationMs });
+        }
+      } catch (err) {
+        // Transport failure — DNS, timeout, fetch threw. Distinct from the HTTP
+        // rejection above, and the more dangerous of the two: an un-awaited
+        // fetch killed by the freeze lands here as a rejection, never as a
+        // response, so this branch is where the original bug would have surfaced.
+        console.error('[ghl] ❌ NOTE WRITE FAILED (exception) — the lead\'s message did NOT reach the CRM');
+        console.error(`[ghl]    contact    : ${id}`);
+        console.error('[ghl]    error      :', err instanceof Error ? (err.stack || err.message) : err);
+        await recordPipelineEvent({
+          source: noteSource,
+          channel: 'ghl-note',
+          ok: false,
+          detail: 'note-write-failed transport',
+          durationMs: Date.now() - noteStartedAt,
+        });
+      }
     }
     return id;
   } catch (err) {

@@ -53,11 +53,24 @@ const MAX_ROWS = 2000;
  */
 export type PipelineChannel =
   | 'ghl' // lead upserted into GoHighLevel
+  | 'ghl-note' // the lead's enquiry text attached to the contact as a note
   | 'email' // lead emailed via SMTP
   | 'sms' // owner-notification SMS dispatched
   | 'fleet' // JARVIS ingest accepted
   | 'supabase' // browser-side Supabase insert
   | 'filter'; // submission rejected before any sink (spam/validation)
+
+/**
+ * `ghl-note` is deliberately separate from `ghl` rather than folded into it.
+ *
+ * They are two different HTTP calls against two different endpoints, and they
+ * fail independently: the upsert carries the contact (name, phone, tags, gclid),
+ * the note carries the customer's own words. A contact with no note is the more
+ * deceptive failure of the two — it looks like a complete lead — so it needs to
+ * be countable on its own. Folding note successes into `ghl` would also
+ * double-count every healthy lead in `accepted`, since one lead produces one
+ * success on each channel.
+ */
 
 export interface PipelineEvent {
   /** Route label, e.g. "send-quote". Safe to store. */
@@ -214,11 +227,13 @@ interface EventRow {
 /**
  * Compute pipeline health from the durable event log.
  *
- * Emits an alert when either:
+ * Emits an alert when any of:
+ *   - no lead has been accepted at all in the window (the intake is broken —
+ *     the exact signature of the 19-day spam-filter outage),
  *   - leads ARE being accepted but the SMS channel has not succeeded in the
  *     window (the notifier is silently broken), or
- *   - no lead has been accepted at all in the window (the intake is broken —
- *     the exact signature of the 19-day spam-filter outage).
+ *   - a contact note failed to write (the lead was captured but the customer's
+ *     enquiry text is missing from the CRM — see lib/ghl.ts).
  *
  * Returns `store: 'unavailable'` rather than a false "healthy" when there is no
  * durable store, because "I cannot tell" must not render as "all fine".
@@ -323,6 +338,26 @@ export async function getLeadPipelineHealth(): Promise<PipelineHealth> {
       `SMS owner notification has not succeeded in ${MAX_SILENCE_DAYS} day(s) despite ` +
         `${accepted} accepted lead(s)${smsFailures ? ` and ${smsFailures} recorded failure(s)` : ''}. ` +
         'Check SMS_SENDER_PHONE is provisioned in SMS_LOCATION_ID — see lib/sms-notify.ts.',
+    );
+  }
+
+  // Enquiry text is being lost: contacts are landing, their notes are not.
+  //
+  // Keyed on the MOST RECENT note outcome rather than a count within the window.
+  // A count would keep this endpoint red for the full window after a single
+  // transient blip had already been recovered from, and the caller is asking
+  // about the pipeline's CURRENT state. Every individual failure still raises its
+  // own fleet alert at the moment it happens, and leaves its own durable row, so
+  // nothing is lost by not re-reporting history here.
+  const note = byChannel.get('ghl-note');
+  const asTime = (iso: string | null): number => (iso ? Date.parse(iso) : 0);
+  const noteIsCurrentlyFailing =
+    !!note?.lastFailure && asTime(note.lastFailure) > asTime(note.lastSuccess);
+  if (noteIsCurrentlyFailing) {
+    alerts.push(
+      'The most recent contact note write FAILED — recent leads were captured but their ' +
+        'enquiry messages are NOT in the CRM. The contacts look complete and are not. ' +
+        'See pushLeadToGhl in lib/ghl.ts.',
     );
   }
 
