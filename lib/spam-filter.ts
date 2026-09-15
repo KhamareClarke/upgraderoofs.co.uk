@@ -2,13 +2,13 @@
  * lib/spam-filter.ts
  *
  * Content-level spam detection for the lead-capture routes. Sits alongside
- * (and after) the honeypot / rate-limit / Turnstile / validateLead guards, but
+ * (and after) the honeypot / rate-limit / Turnstile / validateLeadFields guards, but
  * targets a specific class of junk those guards miss: B2B solicitation pitches
  * — outsourced estimating, marketing/SEO cold outreach, "I came across your
  * company…" boilerplate — plus scraper/automation artifacts like URLs embedded
  * in free-text fields and literal placeholder names (e.g. "gclid").
  *
- * Unlike validateLead (which rejects garbage a human would never submit), this
+ * Unlike validateLeadFields (which rejects garbage a human would never submit), this
  * filter exists to catch *plausibly human* messages that are merely unwanted.
  * The route silently drops them (returns fake success) so the sender can't
  * tell they were filtered, and — critically — never dispatches them to

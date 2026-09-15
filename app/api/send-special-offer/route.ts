@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { emitFleetIngest } from '@/lib/fleet-ingest';
 import { pushLeadToGhl } from '@/lib/ghl';
-import { validateLead } from '@/lib/lead-validation';
+import { FORM_FIELD_RULES, validateLeadFields } from '@/lib/lead-validation';
 import { verifyTurnstile } from '@/lib/turnstile';
 import { logLeadSubmission } from '@/lib/lead-logger';
 import { isSpamSubmission } from '@/lib/spam-filter';
@@ -102,7 +102,15 @@ export async function POST(request: NextRequest) {
     // Content validation — reject junk leads (gibberish names, non-UK phones,
     // invalid postcodes) that the honeypot and IP rate limit let through.
     // Return a fake success so bots can't tell they've been filtered.
-    const spamReasons = validateLead(formData);
+    //
+    // Rules come from FORM_FIELD_RULES.specialOffer — name, phone, postcode.
+    // Email is deliberately not required: this form's wizard only hard-requires
+    // name/phone/service/roof-type and postcode, its Email input carries no
+    // `required` attribute, and both offer pages check the format only *if*
+    // something was typed. Requiring it server-side silently discarded every
+    // submission where the customer skipped that field — and these two pages
+    // have no Supabase write to recover it from.
+    const spamReasons = validateLeadFields(formData, FORM_FIELD_RULES.specialOffer);
     if (spamReasons.length > 0) {
       console.log(`[spam] special-offer lead rejected (${spamReasons.join('; ')}) — name="${formData.name}" phone="${formData.phone}" postcode="${formData.postcode || ''}"`);
       return NextResponse.json(
@@ -143,12 +151,22 @@ export async function POST(request: NextRequest) {
         ...(formData.serviceNeeded ? { service_needed: formData.serviceNeeded } : {}),
       },
     });
+    if (!ghlContactId) {
+      console.error(
+        `[lead] GHL upsert failed — special-offer lead NOT in CRM. ` +
+          `name="${formData.name}" phone="${formData.phone}" postcode="${formData.postcode}"`,
+      );
+    }
     postLeadFollowUp(ghlContactId, formData.name)
       .catch(err => console.warn('[ghl] special-offer follow-up error:', err));
 
     // Local audit log — fire-and-forget, never blocks the response path.
     logLeadSubmission('send-special-offer', formData);
 
+    // Email dispatch. Recorded rather than returned-from, so the response can
+    // report what actually happened instead of assuming success.
+    let emailDelivered = false;
+    let emailError: string | null = null;
     try {
       const { transporter, from, to } = getMailConfig();
 
@@ -175,20 +193,48 @@ export async function POST(request: NextRequest) {
         subject: `New Special Offer Form Submission - ${formData.name}`,
         html: emailHtml,
       });
+      emailDelivered = true;
     } catch (mailErr: unknown) {
-      console.error('Special-offer mail failed after JARVIS notify:', mailErr);
-      return NextResponse.json(
-        {
-          success: true,
-          message: 'Lead received (email delivery pending)',
-          email_error: mailErrorResponseMessage(mailErr),
-        },
-        { status: 200 }
+      emailError = mailErrorResponseMessage(mailErr);
+      console.error(
+        `[lead] Special-offer mail failed — lead NOT in inbox. ` +
+          `name="${formData.name}" phone="${formData.phone}" postcode="${formData.postcode}"`,
+        mailErr,
       );
     }
 
+    // Delivery integrity — a 200 here is a promise that the lead was captured.
+    // GHL and SMTP are independent sinks, so the lead survives if EITHER took
+    // it. It is only genuinely lost when both failed, and that is the one case
+    // where returning success would be a lie the customer never recovers from.
+    if (!ghlContactId && !emailDelivered) {
+      console.error(
+        `[lead] LOST — both GHL and SMTP failed for special-offer lead. ` +
+          `name="${formData.name}" phone="${formData.phone}" postcode="${formData.postcode}" message="${formData.message}"`,
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'We could not record your request. Please call us on 01270 897 606.',
+          ghl: 'failed',
+          email_error: emailError,
+        },
+        { status: 502 }
+      );
+    }
+
+    // Partial delivery is still a captured lead — report it honestly rather
+    // than as a clean success, so the caller can see which sink missed it.
     return NextResponse.json(
-      { success: true, message: 'Email sent successfully' },
+      {
+        success: true,
+        message: emailDelivered
+          ? 'Email sent successfully'
+          : 'Lead received (email delivery pending)',
+        ghl: ghlContactId ? 'ok' : 'failed',
+        email: emailDelivered ? 'ok' : 'failed',
+        ...(emailError ? { email_error: emailError } : {}),
+      },
       { status: 200 }
     );
   } catch (error: unknown) {

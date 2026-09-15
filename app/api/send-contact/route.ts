@@ -3,7 +3,7 @@ import { emitFleetIngest } from '@/lib/fleet-ingest';
 import { pushLeadToGhl } from '@/lib/ghl';
 import { getMailConfig, mailErrorResponseMessage } from '@/lib/mail';
 import { checkRateLimit, getClientIp, isTooFast } from '@/lib/rate-limit';
-import { invalidNameReason, invalidEmailReason, sanitizeLeadName } from '@/lib/lead-validation';
+import { FORM_FIELD_RULES, validateLeadFields, sanitizeLeadName } from '@/lib/lead-validation';
 import { verifyTurnstile } from '@/lib/turnstile';
 import { logLeadSubmission } from '@/lib/lead-logger';
 import { isSpamSubmission } from '@/lib/spam-filter';
@@ -110,12 +110,12 @@ export async function POST(request: NextRequest) {
 
     // Content validation — reject junk names the honeypot + rate limit let
     // through. Return a fake success so bots can't tell they've been filtered.
-    // (Only the name is validated: this form accepts email-only enquiries, so
-    // enforcing phone/postcode presence would reject legitimate leads.)
-    const nameReason = invalidNameReason(formData.name);
-    const emailReason = invalidEmailReason(formData.email);
-    if (nameReason || emailReason) {
-      console.log(`[spam] contact lead rejected (${[nameReason, emailReason].filter(Boolean).join('; ')}) — name="${formData.name}" email="${formData.email}"`);
+    // Rules come from FORM_FIELD_RULES.contact: name + email only. This form
+    // has no postcode field at all and accepts email-only enquiries, so
+    // demanding either would reject legitimate leads.
+    const spamReasons = validateLeadFields(formData, FORM_FIELD_RULES.contact);
+    if (spamReasons.length > 0) {
+      console.log(`[spam] contact lead rejected (${spamReasons.join('; ')}) — name="${formData.name}" email="${formData.email}"`);
       return NextResponse.json(
         { success: true, message: 'Message received' },
         { status: 200 }
@@ -152,12 +152,22 @@ export async function POST(request: NextRequest) {
         ...(formData.service_needed ? { service_needed: formData.service_needed } : {}),
       },
     });
+    if (!ghlContactId) {
+      console.error(
+        `[lead] GHL upsert failed — contact lead NOT in CRM. ` +
+          `name="${formData.name}" email="${formData.email}" phone="${formData.phone}"`,
+      );
+    }
     createOpportunityForContact(ghlContactId, formData.name)
       .catch(err => console.warn('[ghl] contact follow-up error:', err));
 
     // Local audit log — fire-and-forget, never blocks the response path.
     logLeadSubmission('send-contact', formData);
 
+    // Email dispatch. Recorded rather than returned-from, so the response can
+    // report what actually happened instead of assuming success.
+    let emailDelivered = false;
+    let emailError: string | null = null;
     try {
       const { transporter, from, to } = getMailConfig();
 
@@ -185,20 +195,48 @@ export async function POST(request: NextRequest) {
         subject: `New Contact Form Submission - ${formData.subject} (${formData.name})`,
         html: emailHtml,
       });
+      emailDelivered = true;
     } catch (mailErr: unknown) {
-      console.error('Contact mail failed after JARVIS notify:', mailErr);
-      return NextResponse.json(
-        {
-          success: true,
-          message: 'Message received (email delivery pending)',
-          email_error: mailErrorResponseMessage(mailErr),
-        },
-        { status: 200 }
+      emailError = mailErrorResponseMessage(mailErr);
+      console.error(
+        `[lead] Contact mail failed — lead NOT in inbox. ` +
+          `name="${formData.name}" email="${formData.email}" phone="${formData.phone}"`,
+        mailErr,
       );
     }
 
+    // Delivery integrity — a 200 here is a promise that the lead was captured.
+    // GHL and SMTP are independent sinks, so the lead survives if EITHER took
+    // it. It is only genuinely lost when both failed, and that is the one case
+    // where returning success would be a lie the customer never recovers from.
+    if (!ghlContactId && !emailDelivered) {
+      console.error(
+        `[lead] LOST — both GHL and SMTP failed for contact lead. ` +
+          `name="${formData.name}" email="${formData.email}" phone="${formData.phone}" message="${formData.message}"`,
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'We could not record your message. Please call us on 01270 897 606.',
+          ghl: 'failed',
+          email_error: emailError,
+        },
+        { status: 502 }
+      );
+    }
+
+    // Partial delivery is still a captured lead — report it honestly rather
+    // than as a clean success, so the caller can see which sink missed it.
     return NextResponse.json(
-      { success: true, message: 'Email sent successfully' },
+      {
+        success: true,
+        message: emailDelivered
+          ? 'Email sent successfully'
+          : 'Message received (email delivery pending)',
+        ghl: ghlContactId ? 'ok' : 'failed',
+        email: emailDelivered ? 'ok' : 'failed',
+        ...(emailError ? { email_error: emailError } : {}),
+      },
       { status: 200 }
     );
   } catch (error: unknown) {

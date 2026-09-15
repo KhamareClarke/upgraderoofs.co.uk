@@ -121,11 +121,33 @@ const DISPOSABLE_DOMAINS = new Set([
   'throwawaymail.com', 'sharklasers.com', 'yopmail.com', 'maildrop.cc',
   'getnada.com', 'temp-mail.org', 'dispostable.com', 'mailnesia.com',
   'trashmail.com', 'mailcatch.com', 'mintemail.com', 'eyepaste.com',
-  'spambox.us', 'mailbox.org', 'grr.la', 'spamgourmet.com', 'mail.tm',
+  'spambox.us', 'grr.la', 'spamgourmet.com', 'mail.tm',
   '0vv1.com', 'fakemail.net', 'mailtemp.com', 'getairmail.com',
 ]);
+// NOTE: 'mailbox.org' was on this list and is NOT a disposable provider — it is
+// a paid, privacy-focused mailbox (a European peer of ProtonMail). Every real
+// customer using one was silently discarded as a spammer. Verify a domain
+// actually sells throwaway inboxes before adding it here.
 
-const ROLE_ADDRESS_PREFIX = /^(admin|info|sales|support|contact|help|noreply|no-reply|abuse|postmaster|webmaster|office|enquiries|enquiry|hello|mail|test|team|marketing|roofing|quotes|leads)@/i;
+/**
+ * Local-parts a *customer* would never use to receive a reply.
+ *
+ * This list is deliberately short, because a false positive here silently
+ * destroys a real lead: the route treats a content-validation failure as spam
+ * and returns `200 {success:true}`, so nobody — customer, client, or log —
+ * ever sees that the enquiry existed.
+ *
+ * Removed after testing against plausible customer addresses
+ * (`scripts/test-email-validation.js`): admin, info, sales, support, contact,
+ * help, office, enquiries, enquiry, hello, mail, test, team, marketing,
+ * roofing, quotes, leads. All of those are normal addresses for the kind of
+ * customer this business wants — a landlord on `info@`, a letting agent on
+ * `office@`, a builder on `sales@`, a firm on `enquiries@` — and `hello@` is a
+ * common *personal* Gmail local-part that was being discarded as a role address.
+ * What remains is mechanical mailboxes: nothing sends a genuine enquiry from
+ * one, and nothing reads a reply sent to one.
+ */
+const ROLE_ADDRESS_PREFIX = /^(noreply|no-reply|donotreply|do-not-reply|postmaster|abuse|webmaster|mailer-daemon)@/i;
 
 export function invalidEmailReason(email: unknown): string | null {
   if (typeof email !== 'string' || !email.trim()) return 'email missing';
@@ -145,19 +167,71 @@ export interface LeadFields {
   email?: unknown;
 }
 
+/** A field this module knows how to check. */
+export type LeadField = keyof LeadFields;
+
+const FIELD_CHECKERS: Record<LeadField, (value: unknown) => string | null> = {
+  name: invalidNameReason,
+  phone: invalidPhoneReason,
+  postcode: invalidPostcodeReason,
+  email: invalidEmailReason,
+};
+
+export interface LeadFieldRules {
+  /** Absent or blank fails. */
+  required: readonly LeadField[];
+  /** Absent or blank passes; a supplied value must still be well-formed. */
+  optional?: readonly LeadField[];
+}
+
 /**
- * Validate a lead's core fields. Returns a list of failure reasons (empty =
- * lead looks legitimate). Routes treat a non-empty list as spam.
+ * The single source of truth for what each route demands, so validation cannot
+ * drift between routes.
+ *
+ * These are deliberately NOT one shared list. A route may only require what its
+ * form actually collects — requiring anything more turns a legitimate
+ * submission into a fake `200 {success:true}` and the lead is lost with no
+ * trace. That is not hypothetical: `validateLead()` (this file's previous
+ * aggregate) demanded an email from every form, which silently discarded every
+ * offer-page submission where the customer left the optional Email field blank.
+ *
+ *  - quote        QuoteForm / ServiceLeadForm — the wizard hard-requires name,
+ *                 phone, service and roof type on step 1 and postcode on
+ *                 step 2. Email is optional.
+ *  - contact      ContactForm / EnhancedContactSection — collects name, email,
+ *                 phone. It has NO postcode field: ContactForm folds it into
+ *                 the message body ("Postcode: CW11 4NE") and sends no
+ *                 `postcode` key, so requiring one drops every submission.
+ *                 Phone is optional — email-only enquiries are legitimate.
+ *  - specialOffer the two offer pages — the wizard requires name, phone,
+ *                 service, roof type and postcode. The Email input has no
+ *                 `required` attribute and both pages check its format only
+ *                 when it is non-empty, so it must stay optional here too.
  */
-export function validateLead(fields: LeadFields): string[] {
+export const FORM_FIELD_RULES: Record<'quote' | 'contact' | 'specialOffer', LeadFieldRules> = {
+  quote: { required: ['name', 'phone', 'postcode'], optional: ['email'] },
+  contact: { required: ['name', 'email'], optional: [] },
+  specialOffer: { required: ['name', 'phone', 'postcode'], optional: [] },
+};
+
+/**
+ * Validate a lead against one form's rules. Returns a list of failure reasons
+ * (empty = the lead looks legitimate); routes treat a non-empty list as spam.
+ */
+export function validateLeadFields(
+  body: Record<string, unknown>,
+  rules: LeadFieldRules,
+): string[] {
   const reasons: string[] = [];
-  const name = invalidNameReason(fields.name);
-  const phone = invalidPhoneReason(fields.phone);
-  const postcode = invalidPostcodeReason(fields.postcode);
-  const email = invalidEmailReason(fields.email);
-  if (name) reasons.push(name);
-  if (phone) reasons.push(phone);
-  if (postcode) reasons.push(postcode);
-  if (email) reasons.push(email);
+  for (const field of rules.required) {
+    const reason = FIELD_CHECKERS[field](body[field]);
+    if (reason) reasons.push(reason);
+  }
+  for (const field of rules.optional ?? []) {
+    const value = body[field];
+    if (value === undefined || value === null || value === '') continue;
+    const reason = FIELD_CHECKERS[field](value);
+    if (reason) reasons.push(reason);
+  }
   return reasons;
 }

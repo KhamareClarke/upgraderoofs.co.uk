@@ -53,17 +53,30 @@ export function EnhancedContactSection() {
       body: JSON.stringify({ ...formData, gclid: getGclid(), turnstileToken: extra.turnstileToken, website: extra.honeypot }),
     });
 
-    const result = await response.json();
+    const result = await response.json().catch(() => ({}));
+
+    // Persist BEFORE acting on the response. This row is the only copy of the
+    // lead that survives a GHL/mail outage, and it is independent of both — so
+    // it has to run even when the API reports total delivery failure (5xx),
+    // which is precisely when it is the last copy left. It is skipped only on
+    // 4xx: those are submissions rejected as invalid, rate-limited, or failed
+    // at the CAPTCHA, and we do not want those rows.
+    if (response.ok || response.status >= 500) {
+      try {
+        const { supabase } = await import('@/lib/supabase');
+        const { error: supabaseError } = await supabase.from('contact_messages').insert([formData]);
+        if (supabaseError) {
+          // supabase-js RESOLVES with { error } rather than throwing, so this
+          // was invisible before: the row silently never landed.
+          console.error('[lead] Supabase backstop write failed:', supabaseError.code, supabaseError.message);
+        }
+      } catch (supabaseError) {
+        console.error('[lead] Supabase backstop write threw:', supabaseError);
+      }
+    }
 
     if (!response.ok) {
       throw new Error(result.error || 'Failed to send email');
-    }
-
-    try {
-      const { supabase } = await import('@/lib/supabase');
-      await supabase.from('contact_messages').insert([formData]);
-    } catch (supabaseError) {
-      console.warn('Failed to save to Supabase, but email was sent:', supabaseError);
     }
 
     trackContactForm({ subject });
