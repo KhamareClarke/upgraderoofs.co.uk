@@ -100,7 +100,11 @@ function isoOffsetDays(days) { return new Date(Date.now() - days * DAY_MS).toISO
 function isoToday() { return new Date().toISOString().slice(0, 10); }
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 function pct(part, whole, d = 1) { if (!whole) return '0.0%'; return ((part / whole) * 100).toFixed(d) + '%'; }
-function masked(v) { if (!v) return '(unset)'; if (v.length <= 6) return '•'.repeat(v.length); return v.slice(0, 4) + '••••' + v.slice(-2); }
+// Presence only — never a value, a length, or any of its characters. The
+// previous `v.slice(0, 4) + '••••' + v.slice(-2)` disclosed 6 characters of a
+// credential, which is a real head start on guessing one. A diagnostic only
+// ever needs to answer "is this configured?".
+function masked(v) { return v ? '(set)' : '(unset)'; }
 
 function httpGet(host, p, headers) {
   return new Promise((resolve) => {

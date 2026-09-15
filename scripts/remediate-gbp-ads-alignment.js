@@ -77,11 +77,12 @@ function banner(t) {
   console.log('='.repeat(80));
 }
 
-const masked = (v) => {
-  if (!v) return '(unset)';
-  if (v.length <= 6) return '•'.repeat(v.length);
-  return v.slice(0, 4) + '••••' + v.slice(-2);
-};
+// Presence only. This used to return `v.slice(0, 4) + '••••' + v.slice(-2)` and
+// is printed below for client_secret / refresh_token / developer_token — i.e. it
+// emitted 6 characters of four different credentials while this file's docstring
+// claimed "no secrets were printed". A diagnostic only needs to answer "is this
+// configured?".
+const masked = (v) => (v ? '(set)' : '(unset)');
 
 function httpGet(host, p, headers) {
   return new Promise((resolve) => {
