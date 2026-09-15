@@ -78,19 +78,14 @@ export function Services() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {services.map((service, index) => {
             const Icon = service.icon;
-            const isFeature = index === 0;
             return (
               <div
                 key={index}
-                className={`group relative overflow-hidden bg-white border border-gray-300 hover:border-brand-navy transition-colors duration-300 ${
-                  isFeature
-                    ? 'sm:col-span-2 lg:col-span-2 lg:row-span-1 lg:h-full'
-                    : ''
-                }`}
+                className="group relative overflow-hidden bg-white border border-gray-300 hover:border-brand-navy transition-colors duration-300"
               >
                 <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-brand-orange to-brand-orange/0" aria-hidden="true" />
 
-                <div className={`relative overflow-hidden ${isFeature ? 'h-56 sm:h-64 lg:h-full lg:min-h-[280px]' : 'h-48'}`}>
+                <div className="relative overflow-hidden h-48">
                   <Image
                     src={service.image}
                     alt={service.alt}
@@ -112,7 +107,7 @@ export function Services() {
                   </div>
 
                   <div className="absolute bottom-4 left-4 right-4">
-                    <h3 className={`font-bold text-white ${isFeature ? 'text-3xl sm:text-4xl' : 'text-2xl'}`}>{service.title}</h3>
+                    <h3 className="font-bold text-white text-2xl">{service.title}</h3>
                   </div>
                 </div>
 

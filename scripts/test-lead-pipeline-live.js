@@ -157,7 +157,7 @@ function loadModule(file) {
 // ── Spies ───────────────────────────────────────────────────────────────────
 // `control` is read at call time so one scenario can flip behaviour without
 // reloading the route module.
-const control = { ghlOk: true, mailOk: true, calls: { ghl: [], mail: [], fleet: 0 } };
+const control = { ghlOk: true, mailOk: true, calls: { ghl: [], mail: [], sms: [], fleet: 0 } };
 
 stubs['@/lib/ghl'] = {
   pushLeadToGhl: async (input) => {
@@ -186,6 +186,15 @@ stubs['@/lib/fleet-ingest'] = {
   },
 };
 stubs['@/lib/lead-logger'] = { logLeadSubmission: () => {} };
+// Without this the routes would call the REAL SMS notifier — and since
+// .env.local carries working SMS_* values, this "no side effects" suite would
+// upsert a contact and send a live text. Stub it like the other outbound sinks.
+stubs['@/lib/sms-notify'] = {
+  notifyOwnerOfLead: async (lead) => {
+    control.calls.sms.push(lead);
+    return { ok: true, sent: true, messageId: `sim-sms-${control.calls.sms.length}` };
+  },
+};
 stubs['@/lib/ghl/opportunities.js'] = {
   listPipelines: async () => ({ pipelines: [] }),
   createOpportunity: async () => ({}),
@@ -292,6 +301,7 @@ async function main() {
       control.mailOk = s.mailOk;
       control.calls.ghl = [];
       control.calls.mail = [];
+      control.calls.sms = [];
 
       ipCounter += 1;
       const req = new NextRequest(`http://localhost/api/${route.name}`, {
@@ -331,6 +341,31 @@ async function main() {
         check(control.calls.mail.length === 1, 'scenario both-ok: SMTP called exactly once');
         const ghl = control.calls.ghl[0] || {};
         check(ghl.source !== undefined, 'scenario both-ok: GHL source tag present');
+        // The owner-notification SMS is a third sink. It is fire-and-forget
+        // from the customer's perspective, so a route that simply never wired
+        // it up would look identical to one that did — hence asserting the
+        // call here rather than trusting the import to still be referenced.
+        check(control.calls.sms.length === 1, 'scenario both-ok: owner SMS dispatched exactly once');
+        const sms = control.calls.sms[0] || {};
+        check(
+          typeof sms.source === 'string' && sms.source.length > 0,
+          'scenario both-ok: SMS carries its originating form',
+          `source=${JSON.stringify(sms.source)}`,
+        );
+      }
+
+      // The alert fires before the 502 is built, so a total-outage lead still
+      // attempts the one channel that might carry the customer's number to
+      // Marcus. Note this is an *attempt*, not a rescue: the SMS travels over
+      // GHL too, so a GHL-wide outage takes it down as well. It only genuinely
+      // rescues when SMTP alone failed — the case where the lead is still in
+      // the CRM but never reached the inbox.
+      if (s.key === 'both-fail') {
+        check(
+          control.calls.sms.length === 1,
+          'scenario both-fail: owner alert still attempted before the 502',
+          `SMS calls=${control.calls.sms.length}`,
+        );
       }
     }
 
@@ -347,6 +382,7 @@ async function main() {
       control.mailOk = true;
       control.calls.ghl = [];
       control.calls.mail = [];
+      control.calls.sms = [];
       ipCounter += 1;
       const req = new NextRequest(`http://localhost/api/${route.name}`, {
         method: 'POST',
@@ -356,9 +392,9 @@ async function main() {
       const res = await handler.POST(req);
       const body = await res.json().catch(() => ({}));
       check(
-        control.calls.ghl.length === 1 && control.calls.mail.length === 1,
+        control.calls.ghl.length === 1 && control.calls.mail.length === 1 && control.calls.sms.length === 1,
         `optional "${omit}" omitted: lead is still delivered (not silently dropped)`,
-        `GHL calls=${control.calls.ghl.length} SMTP calls=${control.calls.mail.length} status=${res.status} body=${JSON.stringify(body)}`,
+        `GHL calls=${control.calls.ghl.length} SMTP calls=${control.calls.mail.length} SMS calls=${control.calls.sms.length} status=${res.status} body=${JSON.stringify(body)}`,
       );
     }
 
@@ -368,6 +404,7 @@ async function main() {
     control.mailOk = true;
     control.calls.ghl = [];
     control.calls.mail = [];
+    control.calls.sms = [];
     ipCounter += 1;
     const spamReq = new NextRequest(`http://localhost/api/${route.name}`, {
       method: 'POST',
@@ -379,6 +416,9 @@ async function main() {
     check(spamRes.status === 200 && spamBody.success === true, 'link spam still silently 200 (bot decoy preserved)');
     check(control.calls.ghl.length === 0, 'link spam never reaches GHL');
     check(control.calls.mail.length === 0, 'link spam never reaches SMTP');
+    // A spam lead must not page the owner — the notification is a cost and an
+    // interruption, so it belongs strictly after the filters, not before.
+    check(control.calls.sms.length === 0, 'link spam never pages the owner by SMS');
 
     console.log('');
   }

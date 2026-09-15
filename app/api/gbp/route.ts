@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import * as path from 'path';
 
+import { GBP_LOCATION_ID } from '@/lib/contact';
+
 /**
  * app/api/gbp/route.ts
  *
@@ -18,7 +20,11 @@ import * as path from 'path';
  *     added as a Manager on the verified "Upgrade Roofs" Business Profile.
  *   (optional) GBP_ACCOUNT_ID — My Business account id, e.g. accounts/123456789.
  *     When omitted, the route lists the accounts the caller can access and uses
- *     the one that owns the target location (locations/17098906572808840).
+ *     the one that owns the target location (locations/<GBP_LOCATION_ID>).
+ *
+ * NOTE: TARGET_LOCATION_ID is owned by lib/contact.ts. A previous "correction"
+ * replaced it with a 17-digit id that does not exist, which made every request
+ * to this route 404 for a reason that looks like a permissions failure.
  *
  * Data returned:
  *   - "profile": name, title, verification + primary category, phone, place/maps
@@ -30,7 +36,7 @@ import * as path from 'path';
 
 const GBP_SCOPES = ['https://www.googleapis.com/auth/business.manage'];
 
-const TARGET_LOCATION_ID = '17098906572808840';
+const TARGET_LOCATION_ID = GBP_LOCATION_ID;
 
 const REVIEW_COUNT = 5;
 

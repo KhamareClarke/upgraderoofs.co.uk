@@ -58,14 +58,18 @@ const ADS_HOST = 'googleads.googleapis.com';
 const ADS_VERSION = 'v22';
 const GEOCODE_HOST = 'maps.googleapis.com';
 
-// ── The three conflicting "canonical" location IDs observed in the repo ──────
+// ── The three "canonical" location IDs observed in the repo ──────────────────
+// Resolved 2026-09-15: only `live` actually resolves (HTTP 200, "Upgrade Roofs").
+// The other two are truncated/typo'd variants that 404. Earlier runs of this
+// script mislabelled `live` as "altered" and `truncated` as "canonical", which
+// is how the bad value reached app/structured-data.tsx.
 const LOCATION_IDS = {
   // (a) supplied in the audit request — appears nowhere else in the codebase.
   request: '170989065056880840',
-  // (b) canonical in master-audit.js / full-ecosystem-audit.js / app/api/gbp/route.ts
-  canonical: '17098906572808840',
-  // (c) altered ID in apply-gbp-service-areas.js / verify / update / structured-data.tsx
-  altered: '17098915606572808840',
+  // (b) truncated variant — does not exist.
+  truncated: '17098906572808840',
+  // (c) the live location.
+  live: '17098915606572808840',
 };
 
 const SERVICE_REGIONS = [
@@ -283,7 +287,7 @@ async function gbpAudit(auth) {
     }
   }
 
-  // Fallback: if no location found by name, try the canonical ID path directly.
+  // Fallback: if no location found by name, try the live location ID path directly.
   if (!locationName) {
     result.notes.push('No business matched by name or known IDs across accessible accounts.');
   } else {
@@ -649,8 +653,8 @@ async function seoAeoAudit() {
     hasRoofingContractor: sd['@type'].includes('RoofingContractor'),
     hasLocalBusiness: sd['@type'].includes('LocalBusiness'),
     identifierValue: sd.identifierValue,
-    identifierIsCanonical: sd.identifierValue === LOCATION_IDS.canonical,
-    identifierIsAltered: sd.identifierValue === LOCATION_IDS.altered,
+    identifierIsLive: sd.identifierValue === LOCATION_IDS.live,
+    identifierIsTruncated: sd.identifierValue === LOCATION_IDS.truncated,
     identifierIsRequestValue: sd.identifierValue === LOCATION_IDS.request,
     areaServedCount: sd.areaServedCities.length,
     serviceAreaRadius: sd.serviceAreaRadiusM,
@@ -825,7 +829,7 @@ function buildReport(r) {
   md.push('| Candidate | ID | HTTP 200? | Title |');
   md.push('|---|---|---|---|');
   for (const ir of (g.idResolution || [])) md.push(`| ${ir.tag} | \`${ir.id}\` | ${ir.httpStatus === 200 ? '✅ yes' : '❌ ' + ir.httpStatus} | ${ir.title || '—'} |`);
-  if ((g.idResolution || []).filter((x) => x.httpStatus === 200).length > 1) md.push('> ⚠ **Multiple IDs resolve** — the live Business Profile and the site JSON-LD may reference different resources. The canonical value in code (`17098906572808840`) should be reconciled with the JSON-LD `identifier.value` (`17098915606572808840`).');
+  if ((g.idResolution || []).filter((x) => x.httpStatus === 200).length > 1) md.push('> ⚠ **Multiple IDs resolve** — more than one candidate location id returns 200. Confirm which one owns the live profile before trusting any single value.');
 
   md.push('');
   md.push('**Profile detail:**');
@@ -998,7 +1002,7 @@ function buildReport(r) {
   md.push(`- RoofingContractor present: ${seo.jsonLd.hasRoofingContractor ? '✅' : '❌'}`);
   md.push(`- LocalBusiness present: ${seo.jsonLd.hasLocalBusiness ? '✅' : '❌'}`);
   md.push(`- identifier.value: \`${seo.jsonLd.identifierValue}\``);
-  if (!seo.jsonLd.identifierIsCanonical) md.push(`  ➜ ⚠ **MISMATCH** — JSON-LD uses \`${seo.jsonLd.identifierValue}\`, but the canonical GBP ID in code is \`${LOCATION_IDS.canonical}\`. This splits entity identity for the knowledge graph.`);
+  if (!seo.jsonLd.identifierIsLive) md.push(`  ➜ ⚠ **MISMATCH** — JSON-LD uses \`${seo.jsonLd.identifierValue}\`, but the live GBP location id is \`${LOCATION_IDS.live}\`. This splits entity identity for the knowledge graph.`);
   md.push(`- areaServed: ${seo.jsonLd.areaServedCount} cities · GeoCircle radius ${seo.jsonLd.serviceAreaRadius / 1000} km`);
   md.push('- FAQ schema: page-specific injection (removed from global layout)');
 
@@ -1023,8 +1027,8 @@ function buildReport(r) {
   sec('6. Past baseline · current executed changes · remaining actions');
   md.push('');
   md.push('**Past baseline (from prior audits & codebase):**');
-  md.push('- Three conflicting GBP location IDs existed in the repo: request `170989065056880840`, canonical `17098906572808840`, altered `17098915606572808840`.');
-  md.push('- JSON-LD `identifier.value` referenced the altered ID (`17098915606572808840`), inconsistent with the canonical API ID.');
+  md.push('- Three conflicting GBP location IDs existed in the repo: request `170989065056880840`, truncated `17098906572808840`, live `17098915606572808840`. Only the last resolves.');
+  md.push('- An earlier pass mislabelled the live id "altered" and the truncated id "canonical", and rewrote JSON-LD `identifier.value` to the truncated value — pointing the knowledge graph at a resource that 404s.');
   md.push('- Offline conversions migrated to Data Manager API; GCLID pipeline re-established (see prior commits).');
   md.push('- FAQ + BreadcrumbList removed from global layout in favour of page-level injection.');
   md.push('- Review schema present (5 reviews, aggregate 5.0 / 127) with 15-town areaServed + 11 postal codes.');

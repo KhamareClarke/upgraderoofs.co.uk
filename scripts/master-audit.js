@@ -40,7 +40,7 @@ const fs = require('fs');
 const path = require('path');
 
 const SITE_URL = 'https://www.upgraderoofs.co.uk/';
-const GBP_LOCATION_ID = '17098906572808840';
+const GBP_LOCATION_ID = '17098915606572808840';
 const OUTPUT = path.join(__dirname, '..', 'master-audit-results.json');
 
 // ── Generic HTTPS helpers ────────────────────────────────────────────────────

@@ -38,6 +38,7 @@ import * as http from 'http';
 import dotenv from 'dotenv';
 import { google } from 'googleapis';
 import { BetaAnalyticsDataClient } from '@google-analytics/data';
+import { GBP_LOCATION_ID as CANONICAL_GBP_LOCATION_ID } from '../lib/contact';
 
 // Load .env.local
 dotenv.config({ path: path.join(__dirname, '..', '.env.local'), quiet: true });
@@ -52,7 +53,10 @@ const GA4_PROPERTY = `properties/${process.env.GA4_PROPERTY_ID || '528838988'}`;
 const GA4_MEASUREMENT_ID = process.env.NEXT_PUBLIC_GA4_ID || 'G-7V452FMYFY';
 const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID || 'GTM-5LMDG3F7';
 const GADS_ID = process.env.NEXT_PUBLIC_GADS_ID || 'AW-7693225904';
-const GBP_LOCATION_ID = process.env.GBP_LOCATION_ID || '17098915606572808840';
+// Location id comes from lib/contact.ts (single owner). This line was previously
+// "fixed" to a 17-digit id that does not exist, which made every GBP check in
+// this audit report "not found" — see the warning in lib/contact.ts.
+const GBP_LOCATION_ID = process.env.GBP_LOCATION_ID || CANONICAL_GBP_LOCATION_ID;
 
 // GCLID validation rules (mirror app/api/ghl-webhook/route.ts validateGclid)
 const GCLID_RE = /^[A-Za-z0-9_-]{20,128}$/;

@@ -5,6 +5,7 @@ import { FORM_FIELD_RULES, validateLeadFields } from '@/lib/lead-validation';
 import { verifyTurnstile } from '@/lib/turnstile';
 import { logLeadSubmission } from '@/lib/lead-logger';
 import { isSpamSubmission } from '@/lib/spam-filter';
+import { notifyOwnerOfLead } from '@/lib/sms-notify';
 import { getMailConfig, mailErrorResponseMessage } from '@/lib/mail';
 import { checkRateLimit, getClientIp, isTooFast } from '@/lib/rate-limit';
 
@@ -162,6 +163,19 @@ export async function POST(request: NextRequest) {
 
     // Local audit log — fire-and-forget, never blocks the response path.
     logLeadSubmission('send-special-offer', formData);
+
+    // Owner notification SMS. Awaited for the same reason as the GHL push —
+    // serverless may freeze an in-flight request once the response returns.
+    // notifyOwnerOfLead never throws, so a failed or unconfigured SMS cannot
+    // change the customer's outcome; it is logged inside the module.
+    await notifyOwnerOfLead({
+      name: formData.name,
+      phone: formData.phone,
+      email: formData.email,
+      postcode: formData.postcode,
+      service: formData.serviceNeeded,
+      source: 'special offer form',
+    });
 
     // Email dispatch. Recorded rather than returned-from, so the response can
     // report what actually happened instead of assuming success.

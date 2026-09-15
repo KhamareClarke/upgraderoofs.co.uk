@@ -50,7 +50,7 @@ const path = require('path');
 
 const SITE_URL = 'https://www.upgraderoofs.co.uk/';
 const GA4_PROPERTY = `properties/${process.env.GA4_PROPERTY_ID || '528838988'}`;
-const GBP_LOCATION_ID = '17098906572808840';
+const GBP_LOCATION_ID = '17098915606572808840';
 const REPORT_PATH = path.join(__dirname, '..', 'full-ecosystem-audit-report.md');
 
 const DAY_MS = 24 * 60 * 60 * 1000;

@@ -70,7 +70,10 @@ export function StructuredData() {
     identifier: {
       '@type': 'PropertyValue',
       name: 'Google Business Profile ID',
-      value: '17098906572808840'
+      // Must match GBP_LOCATION_ID in lib/contact.ts. This is the live location
+      // (placeId ChIJMUVUfoBZekgRrNga9buOK88). Do not shorten it — an earlier
+      // pass dropped three digits and pointed this at a resource that 404s.
+      value: '17098915606572808840'
     },
     areaServed: [
       {

@@ -7,6 +7,7 @@ import { FORM_FIELD_RULES, validateLeadFields, sanitizeLeadName } from '@/lib/le
 import { verifyTurnstile } from '@/lib/turnstile';
 import { logLeadSubmission } from '@/lib/lead-logger';
 import { isSpamSubmission } from '@/lib/spam-filter';
+import { notifyOwnerOfLead } from '@/lib/sms-notify';
 
 export async function POST(request: NextRequest) {
   try {
@@ -135,6 +136,19 @@ export async function POST(request: NextRequest) {
 
     // Local audit log — fire-and-forget, never blocks the response path.
     logLeadSubmission('send-quote', formData);
+
+    // Owner notification SMS. Awaited for the same reason as the GHL push —
+    // serverless may freeze an in-flight request once the response returns.
+    // notifyOwnerOfLead never throws, so a failed or unconfigured SMS cannot
+    // change the customer's outcome; it is logged inside the module.
+    await notifyOwnerOfLead({
+      name: formData.name,
+      phone: formData.phone,
+      email: formData.email,
+      postcode: formData.postcode,
+      service: formData.service_type,
+      source: 'quote form',
+    });
 
     // Email dispatch. Recorded rather than returned-from, so the response can
     // report what actually happened instead of assuming success.

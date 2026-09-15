@@ -4,10 +4,12 @@
  * Corrective entity-alignment patch. Fixes three classes of gap surfaced in
  * §11 of docs/master-content-ecosystem-audit-report.md:
  *
- *   P0 — GBP ID entity split: `app/structured-data.tsx` emits a 20-digit
- *        `identifier.value` ('17098915606572808840') that does not match the
- *        canonical 17-digit TARGET_LOCATION_ID in `app/api/gbp/route.ts`.
- *        This rewrites the value to '17098906572808840'.
+ *   P0 — GBP ID entity split: this previously "corrected" the 20-digit
+ *        `identifier.value` in `app/structured-data.tsx` down to a 17-digit
+ *        value. That was wrong — the 20-digit id ('17098915606572808840') is
+ *        the live location; the 17-digit id returns 404 from the Business
+ *        Information API. The check is now inverted so it heals a truncated
+ *        value instead of creating one.
  *
  *   P1 — Residual aggregate ratings: `components/TownLocalBusinessSchema.tsx`
  *        still emits a self-asserted aggregateRating (4.9 / 127) that the
@@ -30,24 +32,27 @@ import { resolve } from 'node:path';
 const ROOT = resolve(__dirname, '..');
 
 /* ------------------------------------------------------------------ */
-/* P0 — GBP identifier: canonical 17-digit target                      */
+/* P0 — GBP identifier: the LIVE 20-digit location id                  */
 /* ------------------------------------------------------------------ */
-const GBP_CANONICAL_ID = '17098906572808840';
+// Verified 2026-09-15: this id resolves to "Upgrade Roofs" (HTTP 200) and is
+// the one the rest of the repo should carry. Kept inline rather than imported
+// because this script rewrites files that import lib/contact.ts.
+const GBP_CANONICAL_ID = '17098915606572808840';
 
 const structuredDataPath = resolve(ROOT, 'app', 'structured-data.tsx');
 let structuredData = readFileSync(structuredDataPath, 'utf8');
 
-// P0: fix the identifier value (20-digit -> 17-digit). Match by property so
-// the intent is unambiguous even if surrounding whitespace drifts.
-const identifierBad = `value: '17098915606572808840'`;
+// P0: repair a truncated identifier value. Match by property so the intent is
+// unambiguous even if surrounding whitespace drifts.
+const identifierBad = `value: '17098906572808840'`;
 if (structuredData.includes(identifierBad)) {
   structuredData = structuredData.replace(
     identifierBad,
     `value: '${GBP_CANONICAL_ID}'`,
   );
-  console.log('[P0] structured-data.tsx: GBP identifier corrected to 17-digit');
+  console.log('[P0] structured-data.tsx: GBP identifier restored to the live 20-digit id');
 } else if (structuredData.includes(`value: '${GBP_CANONICAL_ID}'`)) {
-  console.log('[P0] structured-data.tsx: identifier already canonical — skip');
+  console.log('[P0] structured-data.tsx: identifier already correct — skip');
 } else {
   throw new Error(
     '[P0] could not locate identifier.value in structured-data.tsx — aborting',
