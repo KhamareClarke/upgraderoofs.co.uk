@@ -182,6 +182,7 @@ export async function POST(request: NextRequest) {
       email: formData.email,
       postcode: formData.postcode,
       service: formData.service_type,
+      message: formData.message,
       source: 'quote form',
     });
 

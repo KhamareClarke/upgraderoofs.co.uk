@@ -36,16 +36,54 @@ function check(ok, label, detail) {
   }
 }
 
+// ── GSM 03.38, for the encoding assertion ───────────────────────────────────
+//
+// One character outside this set forces the ENTIRE message to UCS-2, which
+// drops the per-segment limit from 160 characters to 70 — a silent doubling of
+// what every lead costs. `·` (U+00B7) used to be the separator and was exactly
+// that character. These assertions make the next one fail loudly instead.
+//
+// The extension table is included because it stays GSM-7: those symbols cost
+// two characters each, but they do not switch the encoding.
+const GSM7_CHARS = new Set([
+  ...'@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ',
+  ...' !"#¤%&\'()*+,-./0123456789:;<=>?¡',
+  ...'ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿',
+  ...'abcdefghijklmnopqrstuvwxyzäöñüà',
+  '\n', '\r', '\f', // line feed, carriage return, form feed
+  '^', '{', '}', '\\', '[', '~', ']', '|', '€', // extension table
+]);
+const nonGsm7 = (s) => [...String(s)].filter((c) => !GSM7_CHARS.has(c));
+
 // ── Load the real module, transpiled from source ────────────────────────────
 const source = fs.readFileSync(path.join(ROOT, 'lib/sms-notify.ts'), 'utf8');
 const { outputText } = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
   fileName: 'sms-notify.ts',
 });
+// lib/sms-notify.ts imports `@/lib/lead-health`. That `@/` alias is a Next/TS
+// path mapping Node knows nothing about, so passing a bare `require` here throws
+// MODULE_NOT_FOUND before a single assertion runs. Not hypothetical: this file
+// stopped loading the moment recordPipelineEvent was wired into sms-notify, and
+// a load failure reads as an unrelated crash rather than as "the test is dead".
+//
+// Stubbed rather than resolved — the real module opens a Supabase connection.
+// `recordCalls` doubles as the assertion surface for the health-log wiring.
+const recordCalls = [];
+const localRequire = (spec) => {
+  if (spec === '@/lib/lead-health') {
+    return {
+      recordPipelineEvent: async (event) => { recordCalls.push(event); },
+      recordSilentDrop: async () => {},
+    };
+  }
+  return require(spec);
+};
+
 const mod = { exports: {} };
 // eslint-disable-next-line no-new-func
 new Function('exports', 'require', 'module', '__filename', '__dirname', outputText)(
-  mod.exports, require, mod, 'sms-notify.ts', ROOT,
+  mod.exports, localRequire, mod, 'sms-notify.ts', ROOT,
 );
 const { notifyOwnerOfLead, toE164 } = mod.exports;
 
@@ -120,6 +158,9 @@ const realFetch = global.fetch;
     'upsert 403: reason names the location mismatch', upsertForbidden.reason);
   check(urls.length === 1 && !urls.some((u) => u.includes('/conversations/messages')),
     'upsert 403: does NOT go on to attempt a send', urls.join(', '));
+  check(recordCalls.some((e) => e.channel === 'sms' && e.ok === false && /SMS_LOCATION_ID/.test(e.detail || '')),
+    'upsert 403: the failure is recorded for the health endpoint',
+    JSON.stringify(recordCalls[recordCalls.length - 1]));
 
   // Contact resolved, send rejected — the "no provisioned number" case that
   // this repo actually hit. The contactId must survive for debugging.
@@ -131,6 +172,9 @@ const realFetch = global.fetch;
     'send 422: failure reported, contactId preserved', JSON.stringify(sendRejected));
   check(/not provisioned/.test(sendRejected.reason || ''),
     'send 422: GHL’s own message surfaced in reason', sendRejected.reason);
+  check(recordCalls.some((e) => e.channel === 'sms' && e.ok === false && /not provisioned/.test(e.detail || '')),
+    'send 422: the failure is recorded with GHL’s own message',
+    JSON.stringify(recordCalls[recordCalls.length - 1]));
 
   console.log(`\n${C.bold}Transport faults cannot reject${C.reset}`);
   global.fetch = async () => { throw new Error('getaddrinfo ENOTFOUND services.leadconnectorhq.com'); };
@@ -159,6 +203,7 @@ const realFetch = global.fetch;
   const sent = await notifyOwnerOfLead({
     name: 'Jane Smith', phone: '07700900123', postcode: 'CW11 4NE',
     service: 'Roof Repair', source: 'quote form',
+    message: 'Distinctive marker: ROOFCHECK-ZULU-7741',
   });
   check(sent.ok === true && sent.sent === true && sent.messageId === 'msg-1',
     'resolves ok/sent/messageId', JSON.stringify(sent));
@@ -170,9 +215,76 @@ const realFetch = global.fetch;
   check(sendCall && sendCall.body.contactId === 'c-9', 'payload carries the resolved contactId');
   check(sendCall && /New website lead/.test(sendCall.body.message || '') && /Jane Smith/.test(sendCall.body.message || ''),
     'body names the lead', JSON.stringify(sendCall && sendCall.body.message));
+  check(sendCall && /ROOFCHECK-ZULU-7741/.test(sendCall.body.message || ''),
+    'body previews the customer message', JSON.stringify(sendCall && sendCall.body.message));
+
+  // Encoding. This is a COST assertion, not a cosmetic one: a single character
+  // outside GSM 03.38 doubles what the message costs to send.
+  const happyBody = String(sendCall && sendCall.body.message);
+  check(nonGsm7(happyBody).length === 0,
+    'body is pure GSM 03.38 — no character forces UCS-2',
+    `offending: ${JSON.stringify(nonGsm7(happyBody))}`);
+  check(!happyBody.includes('·'),
+    'body uses no U+00B7 separator', JSON.stringify(happyBody.split('\n')[0]));
+  check(/ · /.test(happyBody) === false,
+    'the " · " separator is gone from the template');
+  check(/ - /.test(happyBody.split('\n')[0]),
+    'fields are separated by a plain hyphen', JSON.stringify(happyBody.split('\n')[0]));
   check(sendCall && sendCall.headers.Authorization === `Bearer ${process.env.SMS_GHL_API_KEY}`,
     'send is authenticated with the SMS token');
   check(sendCall && sendCall.headers.Version === '2021-07-28', 'sends the pinned GHL API version');
+  check(recordCalls.some((e) => e.channel === 'sms' && e.ok === true && e.source === 'quote form'),
+    'records an ok sms outcome for the health endpoint', JSON.stringify(recordCalls[recordCalls.length - 1]));
+
+  // ── Message preview: the customer's words are capped and flattened ─────────
+  //
+  // `message` has no upstream length limit (it is absent from FORM_FIELD_RULES),
+  // so this cap is what keeps a verbose submission from becoming a very long
+  // text. Asserted directly because the failure is silent and costs money per
+  // segment rather than breaking anything visibly.
+  console.log(`\n${C.bold}Message preview${C.reset}`);
+  let lastBody = null;
+  const captureBody = () => {
+    global.fetch = async (u, o) => {
+      if (String(u).includes('/conversations/messages')) lastBody = JSON.parse(o.body).message;
+      return String(u).includes('/contacts/upsert')
+        ? { status: 200, ok: true, text: async () => '{"contact":{"id":"c-9"}}' }
+        : { status: 201, ok: true, text: async () => '{"conversationId":"conv-1","messageId":"msg-1"}' };
+    };
+  };
+
+  captureBody();
+  await notifyOwnerOfLead({ name: 'N', source: 'test', message: `${'A'.repeat(40)} ${'B'.repeat(200)}` });
+  // The ellipsis closes the PREVIEW, not the body — the body still has the
+  // "Via …" line after it, so this must assert on the quoted span.
+  const longInner = (String(lastBody).match(/"([\s\S]*?)"/) || [])[1] || '';
+  check(/\.\.\.$/.test(longInner), 'an over-long message is truncated', JSON.stringify(lastBody));
+  check(lastBody && !/B{100}/.test(lastBody), 'truncation actually cuts the tail');
+  check(lastBody && lastBody.length <= 200, 'the whole body stays within the cap', `len=${lastBody && lastBody.length}`);
+
+  captureBody();
+  await notifyOwnerOfLead({
+    name: 'N', source: 'test',
+    message: 'alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike november oscar papa quebec romeo sierra tango uniform victor whiskey xray yankee',
+  });
+  const inner = (String(lastBody).match(/"([\s\S]*?)"/) || [])[1] || '';
+  check(/\.\.\.$/.test(inner) && /^[A-Za-z ]+$/.test(inner.slice(0, -3)),
+    'truncation lands on a word boundary, not mid-word', JSON.stringify(inner));
+
+  captureBody();
+  await notifyOwnerOfLead({ name: 'N', source: 'test', message: 'Line one\n\nLine  two\t with   runs' });
+  check(/Line one Line two with runs/.test(String(lastBody)),
+    'newlines and whitespace runs collapse to single spaces', JSON.stringify(lastBody));
+
+  captureBody();
+  await notifyOwnerOfLead({ name: 'N', source: 'test' });
+  check(!/""/.test(String(lastBody)) && !/\n\n/.test(String(lastBody)),
+    'no empty preview line when the customer wrote nothing', JSON.stringify(lastBody));
+
+  captureBody();
+  await notifyOwnerOfLead({ name: 'N', source: 'test', message: '   \n  ' });
+  check(!/""/.test(String(lastBody)),
+    'a whitespace-only message is treated as absent, not as an empty quote', JSON.stringify(lastBody));
 
   restoreEnv();
   global.fetch = realFetch;

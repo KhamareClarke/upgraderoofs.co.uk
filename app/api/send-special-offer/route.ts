@@ -209,6 +209,7 @@ export async function POST(request: NextRequest) {
       email: formData.email,
       postcode: formData.postcode,
       service: formData.serviceNeeded,
+      message: formData.message,
       source: 'special offer form',
     });
 

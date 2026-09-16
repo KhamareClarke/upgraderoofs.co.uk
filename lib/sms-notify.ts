@@ -68,6 +68,12 @@ export interface LeadNotification {
   email?: string;
   postcode?: string;
   service?: string;
+  /**
+   * The customer's own words. Previewed (truncated) in the SMS body — see
+   * previewOf() below. Optional: a form with no message field, or a customer
+   * who wrote nothing, simply omits the preview line.
+   */
+  message?: string;
   source: string;
 }
 
@@ -155,16 +161,85 @@ async function ghlFetch(
   }
 }
 
-/** Short, human-readable one-liner for the notification body. */
-function buildMessage(lead: LeadNotification): string {
+/**
+ * How much of the customer's message is previewed in the SMS body.
+ *
+ * This is a COST cap as much as a readability one. Nothing upstream bounds
+ * `message`: it is absent from FORM_FIELD_RULES/FIELD_CHECKERS (only name,
+ * phone, postcode and email are checked) and no route truncates it, so a
+ * customer can submit an essay. The body already runs ~130 characters before
+ * the preview is added. A 120-character preview holds the total near 3 segments.
+ *
+ * The arithmetic assumes the 160-character GSM-7 limit, which the TEMPLATE now
+ * satisfies — see the separator note in buildMessage(). It is not guaranteed for
+ * every lead: `message` and `name` are customer-supplied, and one character
+ * outside GSM-7 (an accented letter, a curly apostrophe, an emoji) switches the
+ * whole message to UCS-2 at 70 characters per segment. Nothing here
+ * transliterates customer text, so this cap bounds the template's contribution
+ * to cost — it is not a guarantee of a segment count.
+ *
+ * That count is also reasoned, not measured: GHL's send response reports ids and
+ * status but not the encoding it chose.
+ */
+const PREVIEW_MAX = 120;
+
+/**
+ * One-line, length-capped preview of the customer's own message.
+ *
+ * Whitespace runs — including the customer's newlines — collapse to single
+ * spaces. Their line breaks carry no meaning in a one-line notification, and
+ * leaving them in would let a submission introduce its own headings into a
+ * message that already has a shape.
+ *
+ * Truncation backs off to a word boundary, but only if that leaves most of the
+ * budget intact: a message with no spaces in its first 120 characters (a URL, a
+ * pasted token) would otherwise collapse to almost nothing. The ellipsis is
+ * ASCII "..." deliberately: U+2026 (…) is outside GSM-7, and would force the
+ * whole message to UCS-2 — the exact thing the separator in buildMessage()
+ * avoids. Any future decoration here needs the same test.
+ */
+function previewOf(message: string | undefined): string {
+  if (!message) return '';
+  const flat = message.replace(/\s+/g, ' ').trim();
+  if (!flat) return '';
+  if (flat.length <= PREVIEW_MAX) return flat;
+  const cut = flat.slice(0, PREVIEW_MAX);
+  const lastSpace = cut.lastIndexOf(' ');
+  const body = lastSpace > PREVIEW_MAX * 0.6 ? cut.slice(0, lastSpace) : cut;
+  return `${body.trimEnd()}...`;
+}
+
+/**
+ * Short, human-readable one-liner for the notification body.
+ *
+ * Exported so a dry run can print the exact text it would send. Duplicating the
+ * template in a script instead is how a "preview" drifts away from the real
+ * message without anyone noticing.
+ */
+export function buildMessage(lead: LeadNotification): string {
   const bits: string[] = [];
   if (lead.name) bits.push(lead.name);
   if (lead.phone) bits.push(lead.phone);
   if (lead.postcode) bits.push(lead.postcode);
   if (lead.service) bits.push(lead.service);
-  const who = bits.length ? bits.join(' · ') : 'Unknown caller';
+  // Plain ASCII hyphen — deliberately NOT `·` (U+00B7). U+00B7 is outside the
+  // GSM 03.38 7-bit alphabet, and a single character outside that alphabet
+  // forces the WHOLE message to UCS-2, dropping the per-segment limit from 160
+  // characters to 70. One decorative separator was roughly doubling the number
+  // of segments every lead cost.
+  const who = bits.length ? bits.join(' - ') : 'Unknown caller';
   const at = new Date().toLocaleString('en-GB', { timeZone: 'Europe/London' });
-  return `New website lead: ${who}\nVia ${lead.source} at ${at}`;
+  // The preview sits on its own line BELOW the contact details, so the first
+  // line stays the at-a-glance "who, and how to reach them". It is quoted to
+  // mark it as the customer's words rather than the notifier's own, and omitted
+  // entirely when they wrote nothing — an empty pair of quotes would read as a
+  // rendering fault rather than an absent field.
+  const preview = previewOf(lead.message);
+  return (
+    `New website lead: ${who}` +
+    (preview ? `\n"${preview}"` : '') +
+    `\nVia ${lead.source} at ${at}`
+  );
 }
 
 /** Non-fatal warning, emitted at most once per process per distinct reason. */

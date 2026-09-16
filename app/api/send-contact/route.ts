@@ -209,6 +209,7 @@ export async function POST(request: NextRequest) {
       phone: formData.phone,
       email: formData.email,
       service: formData.service_needed,
+      message: formData.message,
       source: 'contact form',
     });
 

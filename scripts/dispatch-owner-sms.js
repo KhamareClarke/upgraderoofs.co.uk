@@ -83,10 +83,20 @@ function loadTs(file) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
     fileName: file,
   });
+  // `@/` is a Next/TS path alias that Node cannot resolve, so passing a bare
+  // `require` here throws MODULE_NOT_FOUND as soon as the module imports
+  // anything aliased — and lib/sms-notify.ts imports `@/lib/lead-health`. The
+  // failure is invisible in a dry run, which returns before this is called.
+  // Stubbed rather than resolved: lead-health opens a Supabase connection, and
+  // this script exists to watch GHL traffic, not to log health events.
+  const localRequire = (spec) =>
+    spec === '@/lib/lead-health'
+      ? { recordPipelineEvent: async () => {}, recordSilentDrop: async () => {} }
+      : require(spec);
   const mod = { exports: {} };
   // eslint-disable-next-line no-new-func
   new Function('exports', 'require', 'module', '__filename', '__dirname', outputText)(
-    mod.exports, require, mod, file, path.dirname(file),
+    mod.exports, localRequire, mod, file, path.dirname(file),
   );
   return mod.exports;
 }
@@ -159,6 +169,10 @@ global.fetch = async (url, opts) => {
     phone: '07700 900123',
     postcode: 'CW11 4NE',
     service: 'Roof Inspection',
+    // Exercises the preview line, so a dry run shows the real body shape.
+    // Plain ASCII hyphen, not an em dash: U+2014 is outside GSM 03.38 and would
+    // make this sample UCS-2, hiding the encoding the template now keeps clear.
+    message: 'Loose ridge tiles over the front bay - please quote to re-bed and repoint.',
     source: 'dispatch-owner-sms.js',
   };
   const message = flagValue('--message');
@@ -169,6 +183,19 @@ global.fetch = async (url, opts) => {
     console.log(`\n${C.bold}4 — SMS dispatch${C.reset} ${C.dim}(not sent)${C.reset}`);
     info(`POST /conversations/messages  type=SMS  from=${sender}  to=${recipient}(via contact)`);
     if (message) info(`message: ${message}`);
+    // Load the module even though nothing is sent. Skipping this let a dry run
+    // print every green tick while the real `--send` path threw at import — an
+    // unresolved `@/` alias in lib/sms-notify.ts. A dry run that does not prove
+    // the module loads is not a dry run of anything.
+    const { notifyOwnerOfLead, buildMessage } = loadTs(path.join(ROOT, 'lib/sms-notify.ts'));
+    check(typeof notifyOwnerOfLead === 'function', 'lib/sms-notify.ts loads from source');
+    // Print the real body, from the real builder — never a copy of the template.
+    const body = buildMessage(message ? { ...lead, source: message } : lead);
+    console.log(`\n${C.bold}Exact body${C.reset} ${C.dim}(what --send would transmit)${C.reset}`);
+    console.log(`${C.dim}${'-'.repeat(64)}${C.reset}`);
+    console.log(body);
+    console.log(`${C.dim}${'-'.repeat(64)}${C.reset}`);
+    info(`${body.length} characters · ${body.split('\n').length} lines`);
     console.log(`\n${C.yellow}${C.bold}DRY RUN${C.reset} — nothing was sent. Re-run with ${C.bold}--send${C.reset} to dispatch a real text.`);
     process.exit(0);
   }
