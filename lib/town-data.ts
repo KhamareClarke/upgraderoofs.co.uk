@@ -23,6 +23,15 @@ export interface TownData {
   postcode: string;
   distanceFromBase: string;
   emergencyResponseTime: string;
+  /**
+   * Short per-town summary.
+   *
+   * NOT RENDERED anywhere since 2026-09-17. It used to be the hero paragraph on
+   * the town landing page; the hero now matches the special-offer hero, which
+   * carries no paragraph under the callback line (see components/AreaHero.tsx).
+   * It is also not the source of the matrix pages' copy — those never read it.
+   * Retained because it is unique authored copy, not because anything shows it.
+   */
   intro: string;
   localContext: string;
   roofingChallenges: string;
@@ -38,13 +47,6 @@ export interface TownData {
   ctaLine: string;
   faqs: { q: string; a: string }[];
   nearbyAreas: { name: string; href: string }[];
-  /**
-   * Optional hero paragraph for the town landing page, when it needs to differ
-   * from `intro`. `intro` is shared with the /roofers-<town>/<service> matrix
-   * pages, so a town whose landing page targets a different term sets its own
-   * lede here rather than editing `intro` and changing both.
-   */
-  heroIntro?: string;
   /**
    * Optional long-form local prose, rendered as the answer to the first question
    * in the FAQ list. Plain strings, not JSX — keep any inline link targets out of
@@ -556,10 +558,6 @@ export const townData: Record<string, TownData> = {
     emergencyResponseTime: '15–20 minutes',
     intro:
       'Upgrade Roofs is based right here in Sandbach. We know CW11 roofs better than anyone, from the town centre to Sandbach Heath.',
-    // The landing page leads with the free-inspection offer, so it keeps
-    // "roofers Sandbach" in the hero paragraph instead of the H1.
-    heroIntro:
-      'Upgrade Roofs has been the roofers Sandbach trusts for over 25 years. Book a free, no-obligation inspection — we check the tiles, leadwork, gutters and chimney, then give you a written report with photos so you can see for yourself.',
     localContext:
       'Sandbach is a market town with a proud heritage, and its housing stock reflects that — from Georgian and Victorian properties in the town centre to 1960s–80s estates and modern new-builds on the edges of town. The market square, Saxon Crosses, and surrounding farmland are all landmarks we pass on the way to jobs every day. Our team has completed hundreds of roofing projects across CW11, giving us unmatched knowledge of the local stock.',
     roofingChallenges:

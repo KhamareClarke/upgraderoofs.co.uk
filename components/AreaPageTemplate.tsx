@@ -41,7 +41,12 @@ interface AreaPageProps {
    * on the coverage question below.
    */
   postcode: string;
-  intro: string;
+  /**
+   * Accepted but not rendered — the hero carries no paragraph (see AreaHero).
+   * Kept on the type so the per-town `intro` copy in lib/town-data.ts stays
+   * reachable for reuse rather than being deleted from the data source.
+   */
+  intro?: string;
   localContext: string;
   roofingChallenges: string;
   landmarks?: string[];
@@ -51,8 +56,6 @@ interface AreaPageProps {
   ctaLine?: string;
   faqs: AreaFAQ[];
   nearbyAreas: { name: string; href: string }[];
-  /** Hero paragraph override — see TownData.heroIntro. */
-  heroIntro?: string;
   localProse?: string[];
   caseStudies?: CaseStudy[];
   /** Overrides the default `Roofers in <town>` H1 — see AreaHero. */
@@ -75,9 +78,9 @@ interface AreaPageProps {
  * the page in one place.
  */
 export function AreaPageTemplate({
-  town, postcode, intro, localContext,
+  town, postcode, localContext,
   roofingChallenges, landmarks, propertyTypes, commonProblems, proofPoint, ctaLine,
-  faqs, nearbyAreas, heroIntro, localProse, caseStudies, heading, kicker,
+  faqs, nearbyAreas, localProse, caseStudies, heading, kicker,
 }: AreaPageProps) {
   // Migrate long-form local prose into structured FAQ items so the page body
   // carries no redundant text duplication (directive #2). These derived FAQs
@@ -236,7 +239,7 @@ export function AreaPageTemplate({
   return (
     <div className="min-h-screen bg-white">
       {/* 1. Hero + LeadFormWizard */}
-      <AreaHero town={town} intro={heroIntro ?? intro} heading={heading} kicker={kicker} />
+      <AreaHero town={town} heading={heading} kicker={kicker} />
 
       {/* 2. Trust Badge Grid */}
       <TrustBadgeGrid />

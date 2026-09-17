@@ -35,7 +35,6 @@ export default function RoofersCongleton() {
     <AreaPageTemplate
       town={data.town}
       postcode={data.postcode}
-      intro={data.intro}
       localContext={data.localContext}
       roofingChallenges={data.roofingChallenges}
       landmarks={data.landmarks}

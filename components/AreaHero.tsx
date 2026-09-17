@@ -10,7 +10,6 @@ import { PHONE_DISPLAY } from '@/lib/contact';
 
 interface AreaHeroProps {
   town: string;
-  intro: string;
   /**
    * Overrides the default `Roofers in <town>` H1. Sandbach passes its
    * free-inspection headline here: the homepage already owns "roofers Sandbach",
@@ -26,8 +25,14 @@ interface AreaHeroProps {
  * two-column layout (headline + trust left, white form card right) but with
  * town-specific copy. Kept as a separate 'use client' island so the parent
  * AreaPageTemplate remains a server component (preserving force-static).
+ *
+ * The offer hero carries no paragraph under the callback line and neither does
+ * this one: town `intro` copy used to render here, but it pushed the form below
+ * the fold on mobile and, on Sandbach, restated the inspection checklist
+ * verbatim. Text is centred on mobile and left-aligned from lg up, matching
+ * `app/special-offer/page.tsx`.
  */
-export function AreaHero({ town, intro, heading, kicker }: AreaHeroProps) {
+export function AreaHero({ town, heading, kicker }: AreaHeroProps) {
   const handleSubmit = async (
     values: Record<string, string>,
     extra: { turnstileToken: string; honeypot: string },
@@ -87,7 +92,7 @@ export function AreaHero({ town, intro, heading, kicker }: AreaHeroProps) {
       <div className="container-custom relative z-10 py-4 md:py-6">
         <div className="grid lg:grid-cols-2 gap-12 items-start">
           {/* Left Column — Headlines */}
-          <div className="text-white space-y-6">
+          <div className="text-white space-y-6 text-center lg:text-left">
             <HeroKicker light>{kicker ?? <>Free Roof Inspection · {town}</>}</HeroKicker>
 
             <h1 className="text-4xl md:text-5xl font-bold leading-tight text-balance">
@@ -105,8 +110,6 @@ export function AreaHero({ town, intro, heading, kicker }: AreaHeroProps) {
               <br />
               <span className="text-white">guaranteed</span>
             </p>
-
-            <p className="text-base text-white/90 leading-relaxed max-w-lg">{intro}</p>
           </div>
 
           {/* Right Column — Clean Form */}
