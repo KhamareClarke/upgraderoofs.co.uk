@@ -244,11 +244,17 @@ export function AreaPageTemplate({
       {/* 2. Trust Badge Grid */}
       <TrustBadgeGrid />
 
-      {/* 3. Services — navy block, same component and treatment as the offer page.
-          No `cardsOpenForm` here (the offer page sets it): these cards are six
-          internal links to the money pages, and swapping them for a modal would
-          trade crawlable links for nothing on pages that have to rank. */}
-      <Services dark />
+      {/* 3. Services — navy block, same component and treatment as the offer page,
+          `cardsOpenForm` included: clicking a card opens the quote modal instead
+          of navigating away.
+
+          This is a deliberate trade. The cards used to be six internal links to
+          the service pages, which is why this was originally left off. With
+          `cardsOpenForm` each town page carries six /services/ links rather than
+          twelve — the footer link to each service page is now the only one, so
+          none of the six is orphaned. Reinstating the card links would need the
+          modal to move somewhere else on the card. */}
+      <Services cardsOpenForm dark />
 
       {/* 6. Inspection Checklist */}
       <InspectionChecklist />
