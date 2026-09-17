@@ -190,8 +190,8 @@ export function EnhancedContactSection() {
                 </div>
 
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-green-500/20 flex items-center justify-center flex-shrink-0">
-                    <MessageSquareMore className="w-6 h-6 text-green-400" />
+                  <div className="w-12 h-12 bg-brand-orange/20 flex items-center justify-center flex-shrink-0">
+                    <MessageSquareMore className="w-6 h-6 text-brand-orange" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-white">WhatsApp</h3>
@@ -200,7 +200,7 @@ export function EnhancedContactSection() {
                       href="https://wa.me/447379440583"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-green-400 font-semibold hover:underline"
+                      className="text-brand-orange font-semibold hover:underline"
                       onClick={() => trackWhatsAppClick('contact_sidebar')}
                     >
                       Message Us
@@ -209,15 +209,15 @@ export function EnhancedContactSection() {
                 </div>
 
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                    <Send className="w-6 h-6 text-blue-400" />
+                  <div className="w-12 h-12 bg-brand-orange/20 flex items-center justify-center flex-shrink-0">
+                    <Send className="w-6 h-6 text-brand-orange" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-white">Email</h3>
                     <p className="text-gray-300 text-sm mb-1">Send us an email</p>
                     <a
                       href="mailto:upgraderoofs@yahoo.com"
-                      className="text-blue-400 font-semibold hover:underline"
+                      className="text-brand-orange font-semibold hover:underline"
                       onClick={() => trackEmailClick('contact_section_sidebar')}
                     >
                       upgraderoofs@yahoo.com
@@ -226,8 +226,8 @@ export function EnhancedContactSection() {
                 </div>
 
                 <div className="flex items-start gap-4">
-                  <div className="w-12 h-12 bg-purple-500/20 flex items-center justify-center flex-shrink-0">
-                    <CalendarClock className="w-6 h-6 text-purple-400" />
+                  <div className="w-12 h-12 bg-brand-orange/20 flex items-center justify-center flex-shrink-0">
+                    <CalendarClock className="w-6 h-6 text-brand-orange" />
                   </div>
                   <div>
                     <h3 className="font-semibold text-white">Business Hours</h3>
