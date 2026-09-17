@@ -3,8 +3,17 @@ import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 import { TownLocalBusinessSchema } from '@/components/TownLocalBusinessSchema';
 
 export const metadata: Metadata = {
-  title: 'Roofers Northwich | 01270 897606',
-  description: 'Local roofers in Northwich (CW8). CORC certified, £10M insured, 10-year guarantee. Flat roofing, tiles, chimney repairs, gutters, skylights & cladding. Free quotes.',
+  title: 'Roofers Northwich | CW8 & CW9 Roofing',
+  description: 'Roofers covering Northwich (CW8 & CW9) from our Sandbach base. Victorian terraces to modern estates. CORC certified, £10M insured, 10-year guarantee.',
+  keywords: 'roofers northwich, roofer northwich, roofing northwich, roof repair northwich, flat roofing northwich, emergency roofer northwich',
+  openGraph: {
+    title: 'Roofers Northwich | CW8 & CW9 Roofing | Upgrade Roofs',
+    description: 'Northwich roofers covering CW8 and CW9. Repairs, re-roofing and flat roofing. Free written quotes, no obligation.',
+    url: 'https://www.upgraderoofs.co.uk/roofers-northwich',
+    siteName: 'Upgrade Roofs',
+    locale: 'en_GB',
+    type: 'website',
+  },
   alternates: { canonical: 'https://www.upgraderoofs.co.uk/roofers-northwich' },
   robots: { index: true, follow: true },
 };

@@ -152,7 +152,7 @@ function replayFilter() {
   //   block  — confident spam; dropped (decoy 200)
   const cases = [
     {
-      label: 'QuoteForm / ServiceLeadForm / InlineLeadForm  (email required)',
+      label: 'QuoteForm / ServiceLeadForm / AreaHero  (email required)',
       endpoint: '/api/send-quote',
       expect: 'allow',
       payload: {

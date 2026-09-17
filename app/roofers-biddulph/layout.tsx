@@ -3,8 +3,17 @@ import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 import { TownLocalBusinessSchema } from '@/components/TownLocalBusinessSchema';
 
 export const metadata: Metadata = {
-  title: 'Roofers Biddulph | 01270 897606',
-  description: 'Local roofers in Biddulph (ST8). CORC certified, £10M insured, 10-year guarantee. Flat roofing, tiles, chimney repairs, gutters, skylights & cladding. Free quotes.',
+  title: 'Roofers Biddulph | ST8 Roofing Company',
+  description: 'Roofers in Biddulph (ST8), 12 miles from Sandbach. Specified for exposed moorland conditions. CORC certified, £10M insured, 10-year guarantee.',
+  keywords: 'roofers biddulph, roofer biddulph, roofing biddulph, roof repair biddulph, flat roofing biddulph, emergency roofer staffordshire',
+  openGraph: {
+    title: 'Roofers Biddulph | ST8 Roofing | Upgrade Roofs',
+    description: 'Biddulph roofers covering ST8, specified for exposed moorland conditions. Free written quotes, no obligation.',
+    url: 'https://www.upgraderoofs.co.uk/roofers-biddulph',
+    siteName: 'Upgrade Roofs',
+    locale: 'en_GB',
+    type: 'website',
+  },
   alternates: { canonical: 'https://www.upgraderoofs.co.uk/roofers-biddulph' },
   robots: { index: true, follow: true },
 };

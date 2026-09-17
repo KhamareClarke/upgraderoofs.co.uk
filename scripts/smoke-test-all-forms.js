@@ -10,7 +10,7 @@
  * 200 even if GHL fails, so we verify GHL receipt directly).
  *
  * Endpoints covered:
- *   /api/send-quote            (QuoteForm, InlineLeadForm, town pages)
+ *   /api/send-quote            (QuoteForm, AreaHero, town pages)
  *   /api/send-contact          (ContactForm, EnhancedContactSection)
  *   /api/send-special-offer    (special-offer page, offer-sandbach page)
  *
@@ -37,7 +37,7 @@ const TEST_STAMP = `smoke${Date.now()}`;
 // assert GHL receipt independently.
 const FORMS = [
   {
-    name: 'QuoteForm / InlineLeadForm (town pages)',
+    name: 'QuoteForm / AreaHero (town pages)',
     endpoint: '/api/send-quote',
     email: `${TEST_STAMP}-quote@upgraderoofs-test.invalid`,
     payload: {

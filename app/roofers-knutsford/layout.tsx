@@ -3,8 +3,17 @@ import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 import { TownLocalBusinessSchema } from '@/components/TownLocalBusinessSchema';
 
 export const metadata: Metadata = {
-  title: 'Roofers Knutsford | 01270 897606',
-  description: 'Local roofers in Knutsford (WA16). CORC certified, £10M insured, 10-year guarantee. Flat roofing, tiles, chimney repairs, gutters, skylights & cladding. Free quotes.',
+  title: 'Roofers Knutsford | WA16 Heritage Roofs',
+  description: 'Heritage roofers in Knutsford (WA16). Experienced with listed buildings and conservation areas. CORC certified, £10M insured, 10-year guarantee.',
+  keywords: 'roofers knutsford, roofer knutsford, roofing knutsford, roof repair knutsford, listed building roofing knutsford, heritage roofer cheshire',
+  openGraph: {
+    title: 'Roofers Knutsford | WA16 Heritage Roofing | Upgrade Roofs',
+    description: 'Knutsford roofers experienced with listed buildings and conservation areas across WA16. Free written quotes.',
+    url: 'https://www.upgraderoofs.co.uk/roofers-knutsford',
+    siteName: 'Upgrade Roofs',
+    locale: 'en_GB',
+    type: 'website',
+  },
   alternates: { canonical: 'https://www.upgraderoofs.co.uk/roofers-knutsford' },
   robots: { index: true, follow: true },
 };

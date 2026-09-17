@@ -35,8 +35,6 @@ export default function RoofersNantwichPage() {
     <AreaPageTemplate
       town={data.town}
       postcode={data.postcode}
-      distanceFromBase={data.distanceFromBase}
-      emergencyResponseTime={data.emergencyResponseTime}
       intro={data.intro}
       localContext={data.localContext}
       roofingChallenges={data.roofingChallenges}

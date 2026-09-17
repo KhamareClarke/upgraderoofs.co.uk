@@ -3,8 +3,17 @@ import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 import { TownLocalBusinessSchema } from '@/components/TownLocalBusinessSchema';
 
 export const metadata: Metadata = {
-  title: 'Roofers Newcastle-under-Lyme | 01270 897606',
-  description: 'Local roofers in Newcastle-under-Lyme (ST5). CORC certified, £10M insured, 10-year guarantee. Flat roofing, tiles, chimney repairs, gutters, skylights & cladding. Free quotes.',
+  title: 'Roofers Newcastle-under-Lyme | ST5 Roofing',
+  description: 'Roofers covering Newcastle-under-Lyme (ST5). Victorian terraces, post-war estates and flat roofs. CORC certified, £10M insured, 10-year guarantee.',
+  keywords: 'roofers newcastle-under-lyme, roofer newcastle under lyme, roofing st5, roof repair newcastle-under-lyme, flat roofing staffordshire',
+  openGraph: {
+    title: 'Roofers Newcastle-under-Lyme | ST5 Roofing | Upgrade Roofs',
+    description: 'Newcastle-under-Lyme roofers covering ST5. Victorian terraces, post-war estates and flat roofing. Free written quotes.',
+    url: 'https://www.upgraderoofs.co.uk/roofers-newcastle-under-lyme',
+    siteName: 'Upgrade Roofs',
+    locale: 'en_GB',
+    type: 'website',
+  },
   alternates: { canonical: 'https://www.upgraderoofs.co.uk/roofers-newcastle-under-lyme' },
   robots: { index: true, follow: true },
 };

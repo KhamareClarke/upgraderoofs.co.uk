@@ -38,6 +38,33 @@ export interface TownData {
   ctaLine: string;
   faqs: { q: string; a: string }[];
   nearbyAreas: { name: string; href: string }[];
+  /**
+   * Optional hero paragraph for the town landing page, when it needs to differ
+   * from `intro`. `intro` is shared with the /roofers-<town>/<service> matrix
+   * pages, so a town whose landing page targets a different term sets its own
+   * lede here rather than editing `intro` and changing both.
+   */
+  heroIntro?: string;
+  /**
+   * Optional long-form local prose, rendered as the answer to the first question
+   * in the FAQ list. Plain strings, not JSX — keep any inline link targets out of
+   * here and let the services block and case studies carry them.
+   */
+  localProse?: string[];
+  /**
+   * Optional named case studies. Only towns with real, documented jobs have
+   * these; never invent one to fill the section on another town.
+   */
+  caseStudies?: {
+    title: string;
+    service: string;
+    location: string;
+    issue: string;
+    solution: string;
+    result: string;
+    href: string;
+    serviceLabel: string;
+  }[];
 }
 
 export const townData: Record<string, TownData> = {
@@ -529,6 +556,10 @@ export const townData: Record<string, TownData> = {
     emergencyResponseTime: '15–20 minutes',
     intro:
       'Upgrade Roofs is based right here in Sandbach. We know CW11 roofs better than anyone, from the town centre to Sandbach Heath.',
+    // The landing page leads with the free-inspection offer, so it keeps
+    // "roofers Sandbach" in the hero paragraph instead of the H1.
+    heroIntro:
+      'Upgrade Roofs has been the roofers Sandbach trusts for over 25 years. Book a free, no-obligation inspection — we check the tiles, leadwork, gutters and chimney, then give you a written report with photos so you can see for yourself.',
     localContext:
       'Sandbach is a market town with a proud heritage, and its housing stock reflects that — from Georgian and Victorian properties in the town centre to 1960s–80s estates and modern new-builds on the edges of town. The market square, Saxon Crosses, and surrounding farmland are all landmarks we pass on the way to jobs every day. Our team has completed hundreds of roofing projects across CW11, giving us unmatched knowledge of the local stock.',
     roofingChallenges:
@@ -555,6 +586,57 @@ export const townData: Record<string, TownData> = {
       { name: 'Nantwich', href: '/roofers-nantwich' },
       { name: 'Alsager', href: '/roofers-alsager' },
       { name: 'Holmes Chapel', href: '/roofers-holmes-chapel' },
+    ],
+    // Ported from the hand-written roofers-sandbach page when it moved onto the
+    // shared template, so its depth survives the reskin. Sandbach carries the
+    // free-inspection term rather than the generic "roofers" one, which the
+    // homepage already owns; the H1 override lives on the page file.
+    localProse: [
+      'Based at 20 Crewe Road in the heart of Sandbach (CW11 4NE), Upgrade Roofs is a family-run roofing company with deep roots in the local community. We have completed hundreds of roofing projects across Sandbach, from period properties on the High Street and Hightown to modern estates around Elworth, Wheelock, and the Abbeyfields development off Middlewich Road.',
+      'We hold full CORC (Confederation of Roofing Contractors) certification, carry £10 million public liability insurance, and provide a 10-year workmanship guarantee on every job. Whether you need a single tile replaced, a full roof strip and re-tile, or an emergency leak repair at 2am, we deliver the same standard of care.',
+      'As Sandbach locals ourselves, we understand the specific roofing challenges in this area, from the exposed conditions along the A534 corridor to the older rooflines around Sandbach Heath and Ettiley Heath, and the conservation considerations near the town centre’s listed buildings. We also handle flat roofing on the many 1960s–70s garage and extension roofs found across the CW11 postcode, and chimney repairs on the Victorian terraces along Congleton Road and Middlewich Road.',
+    ],
+    caseStudies: [
+      {
+        title: 'Full Re-Roof on Congleton Road, Sandbach',
+        service: 'New Roof Installation',
+        location: 'Congleton Road, CW11',
+        issue: 'A 1930s semi-detached with original concrete tiles showing widespread cracking and water ingress into the loft space. The homeowner noticed damp patches on the bedroom ceiling after heavy rain.',
+        solution: 'Complete strip and re-tile using Marley Edgemere interlocking tiles. Replaced all felt and battens, upgraded ventilation to current building regulations, and renewed lead flashings around the chimney stack and soil vent pipe.',
+        result: 'Fully watertight roof with 10-year workmanship guarantee and 15-year manufacturer warranty. Completed in 4 working days with minimal disruption.',
+        href: '/new-roofs',
+        serviceLabel: 'New Roofs',
+      },
+      {
+        title: 'Emergency Leak Repair on Elworth, Sandbach',
+        service: 'Emergency Roof Repair',
+        location: 'Warmingham Lane, Elworth, CW11',
+        issue: 'Urgent call-out after Storm Ciarán caused wind damage, lifting ridge tiles and allowing water to pour into the upstairs hallway. Homeowner called at 7pm on a Friday evening.',
+        solution: 'Same-evening make-safe visit. Temporary tarpaulin secured within 90 minutes. Full repair completed the following Monday — re-bedded ridge tiles with a modern dry ridge system, replaced 8 slipped tiles, and re-sealed the lead valley.',
+        result: 'No further water ingress. Dry ridge system eliminates future mortar deterioration. Insurance claim documentation provided.',
+        href: '/emergency-roofing',
+        serviceLabel: 'Emergency Roofing',
+      },
+      {
+        title: 'Flat Roof Replacement in Sandbach Heath',
+        service: 'Flat Roofing',
+        location: 'Crewe Road, Sandbach Heath, CW11',
+        issue: 'A 1970s detached bungalow with a large flat roof over the rear extension. The original felt roof was bubbling and pooling water, causing persistent damp in the kitchen and utility room.',
+        solution: 'Full strip of the old felt system. Installed new Firestone EPDM rubber membrane with tapered insulation boards to create positive drainage. New aluminium edge trims and upstand detailing throughout.',
+        result: '20-year waterproof guarantee. Energy efficiency improved by the tapered insulation. No more pooling or damp. Completed in 2 days.',
+        href: '/services/flat-roofing',
+        serviceLabel: 'Flat Roofing',
+      },
+      {
+        title: 'Chimney Rebuild & Lead Work on Wheelock',
+        service: 'Chimney Repairs',
+        location: 'Crewe Road, Wheelock, CW11',
+        issue: 'A Victorian end-terrace with a chimney stack that had deteriorated badly — crumbling mortar joints, cracked pots, and failed lead flashings causing damp on the party wall.',
+        solution: 'Scaffolded and rebuilt the top 6 courses of the chimney stack using matching reclaimed bricks. Installed new clay pots and cowls, re-pointed with lime mortar, and fitted new code 4 lead stepped and back-gutter flashings.',
+        result: 'Chimney structurally sound and weathertight. Damp issue resolved within weeks of completion. 10-year guarantee on all work.',
+        href: '/services/chimney-repairs',
+        serviceLabel: 'Chimney Repairs',
+      },
     ],
   },
 };

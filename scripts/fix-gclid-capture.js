@@ -47,7 +47,7 @@ function gclidFlow() {
     { step: '1. Landing URL', file: '(browser address bar)', note: 'gclid arrives as a query parameter, e.g. ?gclid=Cj0KCQj...' },
     { step: '2. Capture', file: 'lib/tracking.ts → captureClickIds()', note: 'URLSearchParams.get("gclid"); stored RAW to localStorage["ur_gclid"]. No .toLowerCase(), no re-encoding. gbraid/wbraid deliberately ignored (separate iOS/PMax format, cannot be uploaded as gclid).' },
     { step: '3. Read for submit', file: 'lib/tracking.ts → getGclid()', note: '90-day TTL; returns the RAW stored value verbatim.' },
-    { step: '4. Form POST', file: 'components/{InlineLeadForm,ContactForm,QuoteForm,EnhancedContactSection}.tsx', note: 'JSON.stringify({ ...formData, gclid: getGclid(), website: honeypot }).' },
+    { step: '4. Form POST', file: 'components/{AreaHero,ContactForm,QuoteForm,EnhancedContactSection}.tsx', note: 'JSON.stringify({ ...formData, gclid: getGclid(), website: honeypot }).' },
     { step: '5. API routes', file: 'app/api/{send-contact,send-quote,send-special-offer}/route.ts', note: 'read formData.gclid; pass to pushLeadToGhl(); tag "google-ads-lead" when present.' },
     { step: '6. GHL push', file: 'lib/ghl.ts → pushLeadToGhl()', note: 'writes native contact.gclid + a readable custom-field copy (GHL_CF_GCLID).' },
     { step: '7. GHL workflow', file: '(GoHighLevel webhook)', note: 'opportunity stage change → POST /api/ghl-webhook with contact gclid.' },

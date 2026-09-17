@@ -11,6 +11,14 @@ import { PHONE_DISPLAY } from '@/lib/contact';
 interface AreaHeroProps {
   town: string;
   intro: string;
+  /**
+   * Overrides the default `Roofers in <town>` H1. Sandbach passes its
+   * free-inspection headline here: the homepage already owns "roofers Sandbach",
+   * so a reskin must not quietly rewrite it to the generic term.
+   */
+  heading?: React.ReactNode;
+  /** Overrides the default `Free Roof Inspection · <town>` kicker. */
+  kicker?: string;
 }
 
 /**
@@ -19,7 +27,7 @@ interface AreaHeroProps {
  * town-specific copy. Kept as a separate 'use client' island so the parent
  * AreaPageTemplate remains a server component (preserving force-static).
  */
-export function AreaHero({ town, intro }: AreaHeroProps) {
+export function AreaHero({ town, intro, heading, kicker }: AreaHeroProps) {
   const handleSubmit = async (
     values: Record<string, string>,
     extra: { turnstileToken: string; honeypot: string },
@@ -80,12 +88,16 @@ export function AreaHero({ town, intro }: AreaHeroProps) {
         <div className="grid lg:grid-cols-2 gap-12 items-start">
           {/* Left Column — Headlines */}
           <div className="text-white space-y-6">
-            <HeroKicker light>Free Roof Inspection · {town}</HeroKicker>
+            <HeroKicker light>{kicker ?? <>Free Roof Inspection · {town}</>}</HeroKicker>
 
             <h1 className="text-4xl md:text-5xl font-bold leading-tight text-balance">
-              Roofers in <span className="text-brand-orange">{town}</span>
-              <br />
-              in Cheshire
+              {heading ?? (
+                <>
+                  Roofers in <span className="text-brand-orange">{town}</span>
+                  <br />
+                  in Cheshire
+                </>
+              )}
             </h1>
 
             <p className="text-lg md:text-xl font-semibold text-brand-orange leading-snug">
