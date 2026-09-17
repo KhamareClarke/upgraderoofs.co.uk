@@ -58,7 +58,24 @@ export type PipelineChannel =
   | 'sms' // owner-notification SMS dispatched
   | 'fleet' // JARVIS ingest accepted
   | 'supabase' // browser-side Supabase insert
-  | 'filter'; // submission rejected before any sink (spam/validation)
+  | 'filter' // submission rejected before any sink (spam/validation)
+  | 'gbp'; // Google Business Profile performance pull (not a lead leg)
+
+/**
+ * `gbp` is NOT a lead leg and is deliberately excluded from the alert logic
+ * below, which keys on `ghl`/`email`/`sms`/`ghl-note` by name.
+ *
+ * It rides this log because the value is the same one the lead legs get: a
+ * durable per-outcome row, a per-channel success/failure count in
+ * `getLeadPipelineHealth()`, and a fleet-ingest alert the moment a pull fails.
+ * A GBP pull that quietly stops is exactly the class of failure this table was
+ * built for — the difference is only that its absence would show up as a flat
+ * graph rather than as a lost customer, so it must not be allowed to drive the
+ * "no lead has been captured" alert.
+ *
+ * Its rows land in the same 30-day anon-readable window as everything else, and
+ * carry no PII: `detail` is a datapoint count or a short HTTP reason.
+ */
 
 /**
  * `ghl-note` is deliberately separate from `ghl` rather than folded into it.
