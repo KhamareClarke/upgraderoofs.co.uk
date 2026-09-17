@@ -1,9 +1,16 @@
+import type { Metadata } from 'next';
 import { Calendar, Clock, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { SectionHeader } from '@/components/SectionHeader';
 import { HeroKicker } from '@/components/HeroKicker';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
+
+// Moved here from the layout: see the comment in app/blog/layout.tsx. `title`
+// carries no brand — the root layout's template appends it.
+export const metadata: Metadata = {
+  title: 'Roofing Blog | Tips & Advice',
+};
 
 function formatDate(dateString: string) {
   return new Date(dateString).toLocaleDateString('en-GB', {

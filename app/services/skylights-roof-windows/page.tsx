@@ -9,7 +9,7 @@ import { CtaSubMessage } from '@/components/CtaSubMessage';
 import { TrustBadgeGrid, InspectionChecklist, FinalCta } from '@/components/SpecialOfferSections';
 
 export const metadata: Metadata = {
-  title: 'Skylights & Roof Windows Cheshire | VELUX Installation | Upgrade Roofs',
+  title: 'Skylights & Roof Windows Cheshire | VELUX Installation',
   description: 'Professional skylight and roof window installation in Cheshire. VELUX approved installers. Bring natural light into your home. Free quotes.',
   keywords: 'skylights Cheshire, roof windows, VELUX windows, skylight installation',
 };

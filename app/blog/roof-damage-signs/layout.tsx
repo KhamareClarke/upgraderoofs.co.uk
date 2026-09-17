@@ -19,7 +19,7 @@ const howToSchema = {
 };
 
 export const metadata: Metadata = {
-  title: 'Signs of Roof Damage | When to Call a Roofer | Upgrade Roofs',
+  title: 'Signs of Roof Damage | When to Call a Roofer',
   description: 'Learn the warning signs of roof damage. Missing tiles, leaks, sagging, moss growth. Know when to call a professional roofer. Expert advice from Upgrade Roofs.',
   keywords: 'roof damage signs, when to repair roof, roof leak signs, missing roof tiles, roof inspection needed, roof damage Cheshire',
   openGraph: {

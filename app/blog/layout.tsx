@@ -1,7 +1,13 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Roofing Blog | Tips & Advice | Upgrade Roofs',
+  // Deliberately no `title` here. A layout that declares a plain-string title
+  // RESETS the root layout's title template for every segment beneath it — Next
+  // stashes the template after each item it merges and takes it from
+  // `resolvedMetadata.title.template`, which a string title leaves null. This
+  // layout sits two levels above each post, so declaring a title here stripped
+  // "| Upgrade Roofs" off all ten blog posts. The /blog index title lives in
+  // page.tsx instead, where it is templated like every other page.
   description: 'Expert roofing tips, advice and guides from Upgrade Roofs. Learn about roof maintenance, repairs, materials and more. Serving Cheshire homeowners.',
   keywords: 'roofing blog, roofing tips, roof maintenance advice, roofing guides Cheshire, roof repair tips, roofing materials guide',
   openGraph: {

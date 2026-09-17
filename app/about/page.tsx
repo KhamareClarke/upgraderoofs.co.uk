@@ -9,7 +9,7 @@ import { HeroKicker } from '@/components/HeroKicker';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
 
 export const metadata: Metadata = {
-  title: 'About Us | Upgrade Roofs | 25+ Years Experience',
+  title: 'About Us | 25+ Years Experience',
   description: 'Upgrade Roofs: Award-winning roofing company with 25+ years experience in Cheshire. CORC certified, £10M insured, 5 star rated. Meet our expert team. Call 01270 897606.',
   keywords: 'about Upgrade Roofs, Cheshire roofing company, roofing contractors Cheshire, experienced roofers, accredited roofing, CORC certified roofers',
   openGraph: {

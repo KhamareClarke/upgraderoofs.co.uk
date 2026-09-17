@@ -3,7 +3,7 @@ import { BlogArticleSchema } from '@/components/BlogArticleSchema';
 import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 
 export const metadata: Metadata = {
-  title: 'Chimney Repairs Cheshire | Repointing & Rebuilds Guide | Upgrade Roofs',
+  title: 'Chimney Repairs Cheshire | Repointing & Rebuilds Guide',
   description: 'Complete guide to chimney repairs in Cheshire. Repointing, flashing, rebuilds explained. Signs of damage, costs, and when to call professionals. Free inspections.',
   keywords: 'chimney repairs Cheshire, chimney repointing, chimney flashing, chimney rebuild, chimney leak repair Sandbach Crewe',
   openGraph: {

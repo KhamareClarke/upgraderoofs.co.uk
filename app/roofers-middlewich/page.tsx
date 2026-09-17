@@ -8,7 +8,7 @@ export const revalidate = false;
 const data = townData.middlewich;
 
 export const metadata: Metadata = {
-  title: 'Roofers Middlewich | CW10 Roofing Experts | Upgrade Roofs',
+  title: 'Roofers Middlewich | CW10 Roofing Experts',
   description: 'Trusted roofers in Middlewich, CW10. Based just 3 miles away in Sandbach · emergency response within 20–30 minutes. Roof repairs, new roofs, flat roofing. Free quotes. 01270 897606.',
   keywords: 'roofers middlewich, roofing company middlewich, roof repair middlewich, new roof middlewich, flat roofing middlewich, emergency roofer middlewich CW10',
   openGraph: {

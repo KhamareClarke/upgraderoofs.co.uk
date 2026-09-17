@@ -3,7 +3,7 @@ import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 import { TownLocalBusinessSchema } from '@/components/TownLocalBusinessSchema';
 
 export const metadata: Metadata = {
-  title: 'Roofers Crewe | 5★ Rated | Free Quotes in 24hrs | Upgrade Roofs',
+  title: 'Roofers Crewe | 5★ Rated | Free Quotes in 24hrs',
   description: 'Trusted roofers serving Crewe (CW1 & CW2) with 127 five-star reviews. Roof repairs, new roofs & flat roofing. 25+ yrs, CORC certified, £10M insured, 24/7 emergency call-outs. Call 01270 897606 for a free no-obligation quote.',
   keywords: 'roofers crewe, roofer crewe, roofing crewe, roofing contractors crewe, roofing company crewe, roof repair crewe, new roofs crewe, emergency roofer crewe, flat roofing crewe',
   openGraph: {

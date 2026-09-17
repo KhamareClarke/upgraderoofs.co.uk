@@ -3,7 +3,7 @@ import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 import { TownLocalBusinessSchema } from '@/components/TownLocalBusinessSchema';
 
 export const metadata: Metadata = {
-  title: 'Roofers Holmes Chapel | Village Roofing Experts | 01270 897606 | Upgrade Roofs',
+  title: 'Roofers Holmes Chapel | Village Roofing Experts | 01270 897606',
   description: 'Quality roofers serving Holmes Chapel CW4, just 4 miles from our Sandbach base. Cottage and period property specialists. Roof repairs, new roofs, flat roofing, 24/7 emergency. CORC certified, £10M insured.',
   openGraph: {
     title: 'Roofers Holmes Chapel | Upgrade Roofs | 01270 897606',

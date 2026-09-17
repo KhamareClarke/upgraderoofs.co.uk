@@ -8,7 +8,7 @@ export const revalidate = false;
 const data = townData.nantwich;
 
 export const metadata: Metadata = {
-  title: 'Roofers Nantwich | Heritage & Listed Building Specialists CW5 | Upgrade Roofs',
+  title: 'Roofers Nantwich | Heritage & Listed Building Specialists CW5',
   description: 'Expert roofers in Nantwich, CW5. Specialists in heritage, listed, and period property roofing. 25+ years experience. Based 8 miles from Nantwich. CORC certified. Free quotes. 01270 897606.',
   keywords: 'roofers nantwich, roofing company nantwich, roof repair nantwich, listed building roofer nantwich, heritage roofing nantwich CW5',
   openGraph: {

@@ -3,7 +3,7 @@ import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 import { TownLocalBusinessSchema } from '@/components/TownLocalBusinessSchema';
 
 export const metadata: Metadata = {
-  title: 'Roofers Congleton | Period & Modern Roofing | 01270 897606 | Upgrade Roofs',
+  title: 'Roofers Congleton | Period & Modern Roofing | 01270 897606',
   description: 'Expert roofers serving Congleton CW12 from nearby Sandbach. Period property specialists. Roof repairs, new roofs, flat roofing, 24/7 emergency call-outs. CORC certified, £10M insured. Free quotes.',
   openGraph: {
     title: 'Roofers Congleton | Upgrade Roofs | 01270 897606',

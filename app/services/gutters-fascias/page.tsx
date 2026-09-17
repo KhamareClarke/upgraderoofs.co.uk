@@ -9,7 +9,7 @@ import { CtaSubMessage } from '@/components/CtaSubMessage';
 import { TrustBadgeGrid, InspectionChecklist, FinalCta } from '@/components/SpecialOfferSections';
 
 export const metadata: Metadata = {
-  title: 'Gutters & Fascias Cheshire | Installation & Repairs | Upgrade Roofs',
+  title: 'Gutters & Fascias Cheshire | Installation & Repairs',
   description: 'Professional gutter and fascia services in Cheshire. uPVC systems, cast iron gutters, repairs, replacements. Protect your property from water damage.',
   keywords: 'gutters Cheshire, fascia boards, gutter installation, gutter repairs, uPVC gutters',
 };

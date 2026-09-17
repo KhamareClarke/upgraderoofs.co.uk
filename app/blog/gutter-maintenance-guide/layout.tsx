@@ -3,7 +3,7 @@ import { BlogArticleSchema } from '@/components/BlogArticleSchema';
 import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 
 export const metadata: Metadata = {
-  title: 'Gutter Maintenance Guide Cheshire | Cleaning & Repairs | Upgrade Roofs',
+  title: 'Gutter Maintenance Guide Cheshire | Cleaning & Repairs',
   description: 'Complete guide to gutter maintenance in Cheshire. When to clean, signs of problems, DIY vs professional. Gutter services in Sandbach, Crewe, Middlewich.',
   keywords: 'gutter maintenance Cheshire, gutter cleaning, blocked gutters, gutter repair, fascia soffit Cheshire',
   openGraph: {

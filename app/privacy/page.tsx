@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Shield, Lock, Eye, FileText, Mail, Phone } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy | Upgrade Roofs - Your Data Protection',
+  title: 'Privacy Policy | Your Data Protection',
   description: 'Read our comprehensive privacy policy. Learn how Upgrade Roofs collects, uses, and protects your personal information. GDPR compliant and transparent data practices.',
   keywords: 'privacy policy, data protection, GDPR, roofing company privacy, Cheshire roofing data policy',
   openGraph: {

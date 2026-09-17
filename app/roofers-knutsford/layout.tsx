@@ -3,7 +3,7 @@ import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 import { TownLocalBusinessSchema } from '@/components/TownLocalBusinessSchema';
 
 export const metadata: Metadata = {
-  title: 'Roofers Knutsford | Upgrade Roofs | 01270 897606',
+  title: 'Roofers Knutsford | 01270 897606',
   description: 'Local roofers in Knutsford (WA16). CORC certified, £10M insured, 10-year guarantee. Flat roofing, tiles, chimney repairs, gutters, skylights & cladding. Free quotes.',
   alternates: { canonical: 'https://www.upgraderoofs.co.uk/roofers-knutsford' },
   robots: { index: true, follow: true },

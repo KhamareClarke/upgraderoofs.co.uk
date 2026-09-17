@@ -7,7 +7,7 @@ import { CtaSubMessage } from '@/components/CtaSubMessage';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  title: 'Thank You | Free Roof Inspection Booked - Upgrade Roofs',
+  title: 'Thank You | Free Roof Inspection Booked',
   description: 'Thank you for booking your free roof inspection. Our expert team will contact you within 10 minutes to arrange your appointment.',
   robots: {
     index: false,

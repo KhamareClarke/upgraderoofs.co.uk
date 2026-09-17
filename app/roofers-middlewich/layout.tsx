@@ -3,7 +3,7 @@ import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 import { TownLocalBusinessSchema } from '@/components/TownLocalBusinessSchema';
 
 export const metadata: Metadata = {
-  title: 'Roofers Middlewich | 3 Miles Away | 01270 897606 | Upgrade Roofs',
+  title: 'Roofers Middlewich | 3 Miles Away | 01270 897606',
   description: 'Your closest qualified roofers to Middlewich CW10 · based just 3 miles away in Sandbach. Roof repairs, new roofs, flat roofing, 24/7 emergency call-outs. CORC certified, £10M insured. Free quotes.',
   openGraph: {
     title: 'Roofers Middlewich | Upgrade Roofs | 01270 897606',

@@ -18,7 +18,7 @@ const howToSchema = {
 };
 
 export const metadata: Metadata = {
-  title: 'Common Flat Roof Problems & Solutions | Cheshire | Upgrade Roofs',
+  title: 'Common Flat Roof Problems & Solutions | Cheshire',
   description: 'Guide to common flat roof problems: ponding, blistering, cracking, leaks. When to repair vs replace. EPDM, GRP, felt roofing experts in Cheshire.',
   keywords: 'flat roof problems, flat roof repair, flat roof leaking, EPDM roof, GRP fibreglass roof, flat roof replacement Cheshire',
   openGraph: {

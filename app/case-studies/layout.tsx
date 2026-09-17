@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 
 export const metadata: Metadata = {
-  title: 'Roofing Case Studies Sandbach & Cheshire | Before & After | Upgrade Roofs',
+  title: 'Roofing Case Studies Sandbach & Cheshire | Before & After',
   description: 'Real roofing projects in Sandbach, Crewe, Middlewich & Cheshire. Before/after photos, customer reviews. Re-roofs, flat roofs, chimney repairs, emergency work. 25+ years experience.',
   keywords: 'roofing case studies Sandbach, before after roofing Cheshire, roofing projects CW11, roof replacement examples, roofing testimonials Sandbach',
   openGraph: {

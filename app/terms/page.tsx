@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { FileText, AlertTriangle, Scale, CheckCircle, XCircle } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Terms and Conditions | Upgrade Roofs - Service Agreement',
+  title: 'Terms and Conditions | Service Agreement',
   description: 'Read our terms and conditions for roofing services. Clear, transparent terms for all our roofing projects in Cheshire and surrounding areas.',
   keywords: 'terms and conditions, roofing terms, service agreement, Cheshire roofing terms, roofing contract',
   openGraph: {

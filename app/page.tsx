@@ -15,8 +15,11 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 export const metadata: Metadata = {
-  // The root layout already provides a default title and template.
-  // We can override the title here for the homepage specifically.
+  // The homepage is the root segment, so the root layout's title template does
+  // NOT reach it: Next only stashes the template for items before the last two
+  // (resolve-metadata.js: `if (i < metadataItems.length - 2)`), and here there
+  // are only two items — the root layout and this page. So the brand has to be
+  // written out in full here, unlike every other page.
   title: 'Your Trusted Local Roofers in Sandbach & Cheshire | Upgrade Roofs',
   description: 'Upgrade Roofs offers expert roof repair, new roofs, and flat roofing in Sandbach, Crewe, and across Cheshire. CORC-certified with 25+ years of experience. Get your free quote today.',
   openGraph: {

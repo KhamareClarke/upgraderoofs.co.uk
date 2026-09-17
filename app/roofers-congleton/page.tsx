@@ -8,7 +8,7 @@ export const revalidate = false;
 const data = townData.congleton;
 
 export const metadata: Metadata = {
-  title: 'Roofers Congleton | CW12 Roofing Company | Upgrade Roofs',
+  title: 'Roofers Congleton | CW12 Roofing Company',
   description: 'Professional roofers serving Congleton and the CW12 postcode. 6 miles from Sandbach base, 30–45 min emergency response. Period property specialists. CORC certified. Free quotes. 01270 897606.',
   keywords: 'roofers congleton, roofing company congleton, roof repair congleton, new roof congleton, emergency roofer congleton CW12, period property roofer congleton',
   openGraph: {

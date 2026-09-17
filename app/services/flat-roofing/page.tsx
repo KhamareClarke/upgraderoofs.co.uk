@@ -10,7 +10,7 @@ import { CtaSubMessage } from '@/components/CtaSubMessage';
 import { TrustBadgeGrid, InspectionChecklist, FinalCta } from '@/components/SpecialOfferSections';
 
 export const metadata: Metadata = {
-  title: 'Flat Roofing Cheshire | EPDM & GRP Installation | Upgrade Roofs',
+  title: 'Flat Roofing Cheshire | EPDM & GRP Installation',
   description: 'Expert flat roofing in Cheshire. EPDM rubber, GRP fibreglass, felt roofing. 20-year warranty. Perfect for extensions, garages, commercial properties.',
   keywords: 'flat roofing Cheshire, EPDM roofing, GRP fibreglass, flat roof repairs',
 };
