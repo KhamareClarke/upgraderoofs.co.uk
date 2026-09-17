@@ -53,3 +53,6 @@ next-env.d.ts
 
 # Supabase CLI scratch (created by `supabase` invocations, e.g. --version)
 supabase/.temp/
+
+# Scratch SSR dumps from local curl verification (.tmp-*.html, .tmp-dev.log)
+.tmp-*

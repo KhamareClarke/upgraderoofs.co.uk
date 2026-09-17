@@ -1,28 +1,17 @@
 import Link from 'next/link';
 import { MapPin } from 'lucide-react';
+import { SERVICE_AREAS_HUB, orderAreaLinks } from '@/lib/service-areas';
 
 interface ServiceAreaLinksProps {
   serviceName: string;
 }
 
 export function ServiceAreaLinks({ serviceName }: ServiceAreaLinksProps) {
-  const areas = [
-    { name: 'Sandbach', href: '/roofers-sandbach' },
-    { name: 'Crewe', href: '/roofers-crewe' },
-    { name: 'Middlewich', href: '/roofers-middlewich' },
-    { name: 'Congleton', href: '/roofers-congleton' },
-    { name: 'Nantwich', href: '/roofers-nantwich' },
-    { name: 'Alsager', href: '/roofers-alsager' },
-    { name: 'Holmes Chapel', href: '/roofers-holmes-chapel' },
-    { name: 'Winsford', href: '/roofers-winsford' },
-    { name: 'Northwich', href: '/roofers-northwich' },
-    { name: 'Macclesfield', href: '/roofers-macclesfield' },
-    { name: 'Knutsford', href: '/roofers-knutsford' },
-    { name: 'Tarporley', href: '/roofers-tarporley' },
-    { name: 'Biddulph', href: '/roofers-biddulph' },
-    { name: 'Newcastle-under-Lyme', href: '/roofers-newcastle-under-lyme' },
-    { name: 'Wilmslow', href: '/roofers-wilmslow' },
-  ];
+  // Sandbach leads here: this block sits on the service pages and the business
+  // is based there. The list used to be a second hardcoded copy of the towns,
+  // so a new town page could ship and silently be missing from all nine
+  // service pages that render this — hence `lib/service-areas.ts`.
+  const areas = orderAreaLinks({ lead: '/roofers-sandbach' });
 
   return (
     <section className="py-10 bg-gray-50 border-t border-gray-200">
@@ -34,13 +23,13 @@ export function ServiceAreaLinks({ serviceName }: ServiceAreaLinksProps) {
           We provide {serviceName.toLowerCase()} services across south Cheshire. Based in Sandbach, we cover:
         </p>
         <div className="flex flex-wrap justify-center gap-3">
-          {areas.map((area, i) => (
-            <Link key={i} href={area.href} className="inline-flex items-center gap-1.5 px-4 py-2 bg-white rounded-lg border border-gray-200 hover:border-brand-orange/50 hover:shadow-sm transition-all text-sm font-medium text-brand-navy hover:text-brand-orange">
+          {areas.map((area) => (
+            <Link key={area.href} href={area.href} className="inline-flex items-center gap-1.5 px-4 py-2 bg-white rounded-lg border border-gray-200 hover:border-brand-orange/50 hover:shadow-sm transition-all text-sm font-medium text-brand-navy hover:text-brand-orange">
               <MapPin className="w-3.5 h-3.5 text-brand-orange" />
               {area.name}
             </Link>
           ))}
-          <Link href="/service-areas" className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-orange/10 rounded-lg border border-brand-orange/20 hover:bg-brand-orange/20 transition-all text-sm font-medium text-brand-orange">
+          <Link href={SERVICE_AREAS_HUB.href} className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-orange/10 rounded-lg border border-brand-orange/20 hover:bg-brand-orange/20 transition-all text-sm font-medium text-brand-orange">
             All areas →
           </Link>
         </div>
