@@ -306,6 +306,138 @@ export const keywordMap: KeywordEntry[] = [
     h1: 'Roofers in Holmes Chapel',
     cannibalizationNotes: 'No overlap — unique town.',
   },
+  // The eight below were in the sitemap and indexable but missing from this
+  // map entirely, so nothing here described what they target. Postcodes and
+  // districts are taken from lib/town-data.ts, which the pages render from.
+  {
+    route: '/roofers-winsford',
+    pageType: 'local-commercial',
+    primaryKeyword: 'roofers in Winsford',
+    secondaryKeywords: [
+      'roofing company Winsford',
+      'roof repairs Winsford',
+      'local roofer Winsford CW7',
+      'roofer Wharton',
+      'roofer Swanlow',
+    ],
+    titleTag: 'Roofers Winsford | Upgrade Roofs | 01270 897606',
+    h1: 'Roofers in Winsford',
+    cannibalizationNotes: 'No overlap — unique town.',
+  },
+  {
+    route: '/roofers-northwich',
+    pageType: 'local-commercial',
+    primaryKeyword: 'roofers in Northwich',
+    secondaryKeywords: [
+      'roofing company Northwich',
+      'roof repairs Northwich',
+      'local roofer Northwich CW8',
+      'roofer Hartford',
+      'roofer Barnton',
+    ],
+    titleTag: 'Roofers Northwich | Upgrade Roofs | 01270 897606',
+    h1: 'Roofers in Northwich',
+    cannibalizationNotes: 'No overlap — unique town. Covers CW8 and CW9.',
+  },
+  {
+    route: '/roofers-macclesfield',
+    pageType: 'local-commercial',
+    primaryKeyword: 'roofers in Macclesfield',
+    secondaryKeywords: [
+      'roofing company Macclesfield',
+      'roof repairs Macclesfield',
+      'local roofer Macclesfield SK10',
+      'roofer Tytherington',
+      'roofer Bollington',
+      'roofer Prestbury',
+    ],
+    titleTag: 'Roofers Macclesfield | 5★ Rated | Free Quotes in 24hrs | Upgrade Roofs',
+    h1: 'Roofers in Macclesfield',
+    cannibalizationNotes:
+      'No overlap — unique town. Covers SK10 and SK11; Bollington and Prestbury are separate villages with their own search volume.',
+  },
+  {
+    route: '/roofers-knutsford',
+    pageType: 'local-commercial',
+    primaryKeyword: 'roofers in Knutsford',
+    secondaryKeywords: [
+      'roofing company Knutsford',
+      'roof repairs Knutsford',
+      'local roofer Knutsford WA16',
+      'roofer Toft',
+      'roofer Tatton',
+    ],
+    titleTag: 'Roofers Knutsford | Upgrade Roofs | 01270 897606',
+    h1: 'Roofers in Knutsford',
+    cannibalizationNotes:
+      'No overlap — unique town. Affluent WA16 market; Tatton and Toft are the prestige addresses.',
+  },
+  {
+    route: '/roofers-tarporley',
+    pageType: 'local-commercial',
+    primaryKeyword: 'roofers in Tarporley',
+    secondaryKeywords: [
+      'roofing company Tarporley',
+      'roof repairs Tarporley',
+      'local roofer Tarporley CW6',
+      'roofer Bunbury',
+      'roofer Beeston',
+    ],
+    titleTag: 'Roofers Tarporley | Upgrade Roofs | 01270 897606',
+    h1: 'Roofers in Tarporley',
+    cannibalizationNotes:
+      'No overlap — unique town. Rural CW6; Bunbury and Beeston are the surrounding villages.',
+  },
+  {
+    route: '/roofers-biddulph',
+    pageType: 'local-commercial',
+    primaryKeyword: 'roofers in Biddulph',
+    secondaryKeywords: [
+      'roofing company Biddulph',
+      'roof repairs Biddulph',
+      'local roofer Biddulph ST8',
+      'roofer Biddulph Moor',
+      'roofer Knypersley',
+    ],
+    titleTag: 'Roofers Biddulph | Upgrade Roofs | 01270 897606',
+    h1: 'Roofers in Biddulph',
+    cannibalizationNotes:
+      'No overlap — unique town. In Staffordshire, not Cheshire, despite sitting in the Cheshire-facing service area; exposed Moorlands conditions are the differentiator.',
+  },
+  {
+    route: '/roofers-newcastle-under-lyme',
+    pageType: 'local-commercial',
+    primaryKeyword: 'roofers in Newcastle-under-Lyme',
+    secondaryKeywords: [
+      'roofing company Newcastle-under-Lyme',
+      'roof repairs Newcastle-under-Lyme',
+      'local roofer Newcastle ST5',
+      'roofer Porthill',
+      'roofer Westlands',
+      'roofer Silverdale',
+    ],
+    titleTag: 'Roofers Newcastle-under-Lyme | Upgrade Roofs | 01270 897606',
+    h1: 'Roofers in Newcastle-under-Lyme',
+    cannibalizationNotes:
+      'No overlap — unique town. In Staffordshire; "Newcastle" alone would collide with Newcastle upon Tyne, so the full hyphenated name is used throughout.',
+  },
+  {
+    route: '/roofers-wilmslow',
+    pageType: 'local-commercial',
+    primaryKeyword: 'roofers in Wilmslow',
+    secondaryKeywords: [
+      'roofing company Wilmslow',
+      'roof repairs Wilmslow',
+      'local roofer Wilmslow SK9',
+      'roofer Alderley Edge',
+      'roofer Handforth',
+      'roofer Hale',
+    ],
+    titleTag: 'Roofers Wilmslow | 5★ Rated | Free Quotes in 24hrs | Upgrade Roofs',
+    h1: 'Roofers in Wilmslow',
+    cannibalizationNotes:
+      'No overlap — unique town. Alderley Edge, Handforth and Hale are distinct villages with their own volume; they route here rather than to separate pages.',
+  },
   {
     route: '/service-areas',
     pageType: 'local-commercial',

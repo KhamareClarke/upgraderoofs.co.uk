@@ -1,10 +1,17 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Send, PhoneCall, CalendarClock, MapPin, Facebook, Instagram, Twitter, Youtube } from 'lucide-react';
 import { TrackedPhoneLink } from '@/components/TrackedPhoneLink';
 import { TrackedEmailLink } from '@/components/TrackedEmailLink';
+import { SERVICE_AREAS_HUB, orderAreaLinks } from '@/lib/service-areas';
 
 export function Footer() {
+  // Sandbach leads: the footer is the one place every page shares, and the
+  // business is based there. Sourced from lib/service-areas.ts so a new town
+  // page cannot ship and be missing from the footer of the whole site.
+  const areas = orderAreaLinks({ lead: '/roofers-sandbach' });
+  const areaLinkClass = 'text-white/70 hover:text-brand-orange transition-colors duration-300';
   const quickLinks = [
     { name: 'Home', href: '/' },
     { name: 'About', href: '/about' },
@@ -136,37 +143,17 @@ export function Footer() {
         <div className="mt-10 pt-8 border-t border-white/10">
           <h3 className="text-lg font-semibold mb-4 tracking-wide">Areas We Serve</h3>
           <div className="flex flex-wrap gap-x-2 gap-y-1 text-sm tracking-wide leading-relaxed">
-            <Link href="/roofers-sandbach" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Sandbach</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-crewe" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Crewe</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-middlewich" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Middlewich</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-congleton" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Congleton</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-alsager" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Alsager</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-nantwich" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Nantwich</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-holmes-chapel" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Holmes Chapel</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-winsford" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Winsford</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-northwich" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Northwich</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-macclesfield" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Macclesfield</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-knutsford" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Knutsford</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-tarporley" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Tarporley</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-biddulph" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Biddulph</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-newcastle-under-lyme" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Newcastle-under-Lyme</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/roofers-wilmslow" className="text-white/70 hover:text-brand-orange transition-colors duration-300">Roofers Wilmslow</Link>
-            <span className="text-white/70">·</span>
-            <Link href="/service-areas" className="text-white/70 hover:text-brand-orange transition-colors duration-300">All Service Areas</Link>
+            {areas.map((area) => (
+              <Fragment key={area.href}>
+                <Link href={area.href} className={areaLinkClass}>
+                  Roofers {area.name}
+                </Link>
+                <span className="text-white/70">·</span>
+              </Fragment>
+            ))}
+            <Link href={SERVICE_AREAS_HUB.href} className={areaLinkClass}>
+              {SERVICE_AREAS_HUB.name}
+            </Link>
           </div>
         </div>
       </div>
