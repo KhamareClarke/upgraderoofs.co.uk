@@ -20,7 +20,29 @@ import { PHONE_DISPLAY } from './contact';
 export interface TownData {
   slug: string;
   town: string;
+  /** District level, e.g. `CW11` or `CW8 / CW9`. Split on `/` where rendered. */
   postcode: string;
+  /**
+   * Villages, estates and neighbourhoods inside the postcode area, grouped by
+   * the district they actually fall in. Rendered by the "Postcodes We Cover"
+   * disclosure on the town page.
+   *
+   * Grouped rather than flat because three towns genuinely span two districts
+   * (`CW1 / CW2`, `CW8 / CW9`, `SK10 / SK11`), and a flat list there would either
+   * imply every place sits in both or leave the reader to guess. The split was
+   * sourced per place rather than inferred, which is why Crewe's Nantwich Road
+   * is filed under CW2 alone even though a short CW1 6 stretch of it exists.
+   *
+   * Every name here should already be published elsewhere on the site — this
+   * file's `landmarks` / `localContext`, or the town's own entry on
+   * /service-areas — so the list gives an existing fact a new place to be read
+   * rather than inventing a coverage claim. Holmes Chapel's `CW4` entry is the
+   * one deliberate exception: it names Cranage, Goostrey, Twemlow and Sproston at
+   * the owner's request, and each was checked against a postcode source before
+   * being added. Swettenham (CW12), Allostock (split WA16 / CW4) and Brereton
+   * (CW11) were checked the same way and left out because they are not CW4.
+   */
+  postcodeAreas?: { district: string; places: string[] }[];
   distanceFromBase: string;
   emergencyResponseTime: string;
   /**
@@ -74,6 +96,10 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-crewe',
     town: 'Crewe',
     postcode: 'CW1 / CW2',
+    postcodeAreas: [
+      { district: 'CW1', places: ['Leighton West', 'Sydney'] },
+      { district: 'CW2', places: ['Nantwich Road', 'Edleston'] },
+    ],
     distanceFromBase: '4 miles from our Sandbach base',
     emergencyResponseTime: '30\u201345 minutes',
     intro:
@@ -110,6 +136,7 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-middlewich',
     town: 'Middlewich',
     postcode: 'CW10',
+    postcodeAreas: [{ district: 'CW10', places: ['Cledford', 'Kinderton'] }],
     distanceFromBase: '3 miles from our Sandbach base',
     emergencyResponseTime: '20\u201330 minutes',
     intro:
@@ -146,6 +173,7 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-congleton',
     town: 'Congleton',
     postcode: 'CW12',
+    postcodeAreas: [{ district: 'CW12', places: ['Mossley', 'West Heath', 'Buglawton', 'Astbury'] }],
     distanceFromBase: '6 miles from our Sandbach base',
     emergencyResponseTime: '30\u201345 minutes',
     intro:
@@ -182,6 +210,7 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-nantwich',
     town: 'Nantwich',
     postcode: 'CW5',
+    postcodeAreas: [{ district: 'CW5', places: ['Stapeley', 'Willaston', 'The Barony'] }],
     distanceFromBase: '8 miles from our Sandbach base',
     emergencyResponseTime: '30\u201345 minutes',
     intro:
@@ -218,6 +247,7 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-alsager',
     town: 'Alsager',
     postcode: 'ST7',
+    postcodeAreas: [{ district: 'ST7', places: ['Radway Green', 'Oakhanger'] }],
     distanceFromBase: '5 miles from our Sandbach base',
     emergencyResponseTime: '25\u201335 minutes',
     intro:
@@ -254,6 +284,7 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-winsford',
     town: 'Winsford',
     postcode: 'CW7',
+    postcodeAreas: [{ district: 'CW7', places: ['Swanlow', 'Wharton', 'The Grange', 'Dene'] }],
     distanceFromBase: '8 miles from our Sandbach base',
     emergencyResponseTime: '20–35 minutes',
     intro: 'Upgrade Roofs covers Winsford and the CW7 postcode area from Sandbach, just 8 miles away. Over 25 years of roofing experience across Cheshire.',
@@ -287,6 +318,10 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-northwich',
     town: 'Northwich',
     postcode: 'CW8 / CW9',
+    postcodeAreas: [
+      { district: 'CW8', places: ['Hartford', 'Winnington', 'Barnton'] },
+      { district: 'CW9', places: ['Witton', 'Anderton'] },
+    ],
     distanceFromBase: '13 miles from our Sandbach base',
     emergencyResponseTime: '30–45 minutes',
     intro: 'Upgrade Roofs covers Northwich and the CW8 and CW9 postcode areas from Sandbach, 13 miles away. CORC-certified roofing for all property types.',
@@ -320,6 +355,10 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-macclesfield',
     town: 'Macclesfield',
     postcode: 'SK10 / SK11',
+    postcodeAreas: [
+      { district: 'SK10', places: ['Hurdsfield', 'Tytherington', 'Prestbury', 'Bollington'] },
+      { district: 'SK11', places: ['Moss Rose'] },
+    ],
     distanceFromBase: '15 miles from our Sandbach base',
     emergencyResponseTime: '35–50 minutes',
     intro: "Upgrade Roofs covers Macclesfield and the SK10 and SK11 postcode areas. We handle the town's mix of Victorian terraces and modern estates.",
@@ -353,6 +392,7 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-knutsford',
     town: 'Knutsford',
     postcode: 'WA16',
+    postcodeAreas: [{ district: 'WA16', places: ['Toft', 'Ollerton', 'Tatton'] }],
     distanceFromBase: '17 miles from our Sandbach base',
     emergencyResponseTime: '40–55 minutes',
     intro: "Upgrade Roofs covers Knutsford and the WA16 postcode area. From Georgian homes to modern properties, we match the standard of the town's architecture.",
@@ -386,6 +426,7 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-tarporley',
     town: 'Tarporley',
     postcode: 'CW6',
+    postcodeAreas: [{ district: 'CW6', places: ['Bunbury', 'Beeston', 'Peckforton'] }],
     distanceFromBase: '15 miles from our Sandbach base',
     emergencyResponseTime: '35–50 minutes',
     intro: "Upgrade Roofs covers Tarporley and the CW6 postcode area. We match period and listed properties with respectful roofing.",
@@ -419,6 +460,7 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-biddulph',
     town: 'Biddulph',
     postcode: 'ST8',
+    postcodeAreas: [{ district: 'ST8', places: ['Biddulph Moor', 'Gillow Heath', 'Brown Lees', 'Knypersley'] }],
     distanceFromBase: '12 miles from our Sandbach base',
     emergencyResponseTime: '30–40 minutes',
     intro: "Upgrade Roofs covers Biddulph and the ST8 postcode area. A reliable local roofer matters in these exposed Moorlands conditions.",
@@ -452,6 +494,7 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-newcastle-under-lyme',
     town: 'Newcastle-under-Lyme',
     postcode: 'ST5',
+    postcodeAreas: [{ district: 'ST5', places: ['Porthill', 'Westlands', 'Silverdale', 'Keele'] }],
     distanceFromBase: '14 miles from our Sandbach base',
     emergencyResponseTime: '30–45 minutes',
     intro: 'Upgrade Roofs covers Newcastle-under-Lyme and the ST5 postcode area. We work on every property type, from Victorian terraces to modern developments.',
@@ -485,6 +528,7 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-wilmslow',
     town: 'Wilmslow',
     postcode: 'SK9',
+    postcodeAreas: [{ district: 'SK9', places: ['Handforth', 'Dean Row', 'Alderley Edge', 'Hale'] }],
     distanceFromBase: '18 miles from our Sandbach base',
     emergencyResponseTime: '40–55 minutes',
     intro: "Upgrade Roofs covers Wilmslow and the SK9 postcode area. Craftsmanship and materials matched to the town's high-quality homes.",
@@ -518,6 +562,9 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-holmes-chapel',
     town: 'Holmes Chapel',
     postcode: 'CW4',
+    postcodeAreas: [
+      { district: 'CW4', places: ['Cranage', 'Goostrey', 'Twemlow', 'Sproston'] },
+    ],
     distanceFromBase: '4 miles from our Sandbach base',
     emergencyResponseTime: '20\u201330 minutes',
     intro:
@@ -554,6 +601,9 @@ export const townData: Record<string, TownData> = {
     slug: 'roofers-sandbach',
     town: 'Sandbach',
     postcode: 'CW11',
+    postcodeAreas: [
+      { district: 'CW11', places: ['Elworth', 'Wheelock', 'Sandbach Heath', 'Ettiley Heath', 'Arclid'] },
+    ],
     distanceFromBase: 'our home town — based in Sandbach',
     emergencyResponseTime: '15–20 minutes',
     intro:

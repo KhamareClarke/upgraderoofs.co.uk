@@ -5,6 +5,7 @@ import { FaqAccordion, type FaqAccordionItem } from '@/components/FaqAccordion';
 import { ReviewsSection } from '@/components/ReviewsSection';
 import { AreaHero } from '@/components/AreaHero';
 import { Services } from '@/components/Services';
+import { PostcodeCoverage } from '@/components/PostcodeCoverage';
 import {
   TrustBadgeGrid,
   InspectionChecklist,
@@ -42,6 +43,12 @@ interface AreaPageProps {
    */
   postcode: string;
   /**
+   * Villages and neighbourhoods inside the area, grouped by district, shown by
+   * the "Postcodes We Cover" disclosure. See the note on
+   * `TownData.postcodeAreas` for how the grouping was sourced.
+   */
+  postcodeAreas?: { district: string; places: string[] }[];
+  /**
    * Accepted but not rendered — the hero carries no paragraph (see AreaHero).
    * Kept on the type so the per-town `intro` copy in lib/town-data.ts stays
    * reachable for reuse rather than being deleted from the data source.
@@ -78,7 +85,7 @@ interface AreaPageProps {
  * the page in one place.
  */
 export function AreaPageTemplate({
-  town, postcode, localContext,
+  town, postcode, postcodeAreas, localContext,
   roofingChallenges, landmarks, propertyTypes, commonProblems, proofPoint, ctaLine,
   faqs, nearbyAreas, localProse, caseStudies, heading, kicker,
 }: AreaPageProps) {
@@ -258,6 +265,20 @@ export function AreaPageTemplate({
 
       {/* 6. Inspection Checklist */}
       <InspectionChecklist />
+
+      {/* 6b. Postcodes we cover — a collapsed disclosure, not another question.
+
+          It sits between the checklist and the CTA on purpose: the checklist
+          says what the visit covers, this answers "do you even come to me?",
+          and the CTA then asks for the booking. The districts repeat what the
+          coverage FAQ already states, but as a scannable list rather than a
+          sentence — the place names are the part a reader cannot get elsewhere
+          on the page.
+
+          This is a deliberate extra section, so the town pages no longer match
+          the offer page's skeleton exactly. The offer page has no equivalent
+          because it is a single-location page. */}
+      <PostcodeCoverage town={town} postcode={postcode} areas={postcodeAreas} />
 
       {/* 7. Final CTA */}
       <FinalCta

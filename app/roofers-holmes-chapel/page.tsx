@@ -35,6 +35,7 @@ export default function RoofersHolmesChapelPage() {
     <AreaPageTemplate
       town={data.town}
       postcode={data.postcode}
+      postcodeAreas={data.postcodeAreas}
       localContext={data.localContext}
       roofingChallenges={data.roofingChallenges}
       landmarks={data.landmarks}
