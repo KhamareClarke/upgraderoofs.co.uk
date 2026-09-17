@@ -19,9 +19,19 @@ export function ReviewsSection({ reviewCta = 'google' }: { reviewCta?: 'google' 
             <span className="h-px w-8 sm:w-12 bg-brand-orange" aria-hidden="true" />
           </div>
         </div>
-        <div className="max-w-5xl mx-auto">
-          <GhlReviewsWidget />
-        </div>
+      </div>
+      {/* Width is load-bearing here, and it is NOT a matter of taste. The widget
+          is a carousel whose stylesheet is `grid-template-columns: repeat(3,1fr)`
+          with a single breakpoint at 768px. It always shows 3 cards per slide,
+          and card width is simply iframe-width / 3. Full-bleed on a 1920px
+          monitor therefore renders ~630px cards, which is what "terrible
+          sizing" was. Keeping it inside the container holds cards around
+          400px. Narrow this wrapper to make cards smaller (~300px of iframe
+          width buys ~100px off each card). */}
+      <div className="container-custom">
+        <GhlReviewsWidget />
+      </div>
+      <div className="container-custom">
         <div className="text-center mt-10">
           {reviewCta === 'quote' ? (
             <QuoteForm
