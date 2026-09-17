@@ -6,6 +6,7 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { HeroKicker } from '@/components/HeroKicker';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
 import { TrustBadgeGrid, ServiceAreaHub, FinalCta } from '@/components/SpecialOfferSections';
+import { orderAreaLinks } from '@/lib/service-areas';
 
 export const dynamic = 'force-static';
 export const revalidate = false;
@@ -403,16 +404,14 @@ export default function RoofersSandbachPage() {
 
       {/* Areas We Serve from Sandbach · shared internal-linking hub */}
       <ServiceAreaHub
-        title={<>We Also Serve <span className="text-brand-orange">These Nearby Areas</span></>}
-        subtitle="Based in Sandbach, we provide the same professional roofing service to neighbouring towns across Cheshire."
-        areas={[
-          { name: 'Crewe', href: '/roofers-crewe' },
-          { name: 'Middlewich', href: '/roofers-middlewich' },
-          { name: 'Congleton', href: '/roofers-congleton' },
-          { name: 'Nantwich', href: '/roofers-nantwich' },
-          { name: 'Alsager', href: '/roofers-alsager' },
-          { name: 'Holmes Chapel', href: '/roofers-holmes-chapel' },
-        ]}
+        title={
+          <>
+            We Also Serve
+            <br />
+            <span className="text-brand-orange">These Nearby Areas</span>
+          </>
+        }
+        areas={orderAreaLinks({ exclude: ['/roofers-sandbach'] })}
       />
 
       {/* CTA Section · shared conversion wrapper */}

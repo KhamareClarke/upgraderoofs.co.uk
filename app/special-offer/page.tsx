@@ -3,15 +3,16 @@
 import { useState, useEffect } from 'react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { ArrowUp, MapPin } from 'lucide-react';
+import { ArrowUp } from 'lucide-react';
 import { trackQuoteRequest, trackPhoneClick, getGclid } from '@/lib/tracking';
 import Image from 'next/image';
-import Link from 'next/link';
 import { LeadFormWizard } from '@/components/LeadFormWizard';
+import { Services } from '@/components/Services';
 import { HeroKicker } from '@/components/HeroKicker';
 import { ReviewsSection } from '@/components/ReviewsSection';
 import { FAQ } from '@/components/FAQ';
 import { TrustBadgeGrid, ServiceAreaHub, InspectionChecklist, FinalCta } from '@/components/SpecialOfferSections';
+import { SERVICE_AREA_LINKS } from '@/lib/service-areas';
 
 export default function SpecialOfferPage() {
   const [mounted, setMounted] = useState(false);
@@ -94,7 +95,7 @@ export default function SpecialOfferPage() {
         <div className="container-custom relative z-10 py-4 md:py-6">
           <div className="grid lg:grid-cols-2 gap-12 items-start">
             {/* Left Column - Headlines (mirrors homepage hero) */}
-            <div className="text-white space-y-6">
+            <div className="text-white space-y-6 text-center lg:text-left">
               <HeroKicker light>Est. Sandbach, Cheshire</HeroKicker>
 
               <h1 className="text-4xl md:text-5xl font-bold leading-tight text-balance">
@@ -180,31 +181,10 @@ export default function SpecialOfferPage() {
       {/* Trust Badges · matches homepage accreditation section */}
       <TrustBadgeGrid />
 
-      {/* Local Service Areas · Internal Linking Hub (matches homepage) */}
-      <ServiceAreaHub
-        areas={[
-          { name: 'Roofers Sandbach', href: '/roofers-sandbach' },
-          { name: 'Roofers Crewe', href: '/roofers-crewe' },
-          { name: 'Roofers Middlewich', href: '/roofers-middlewich' },
-          { name: 'Roofers Congleton', href: '/roofers-congleton' },
-          { name: 'Roofers Nantwich', href: '/roofers-nantwich' },
-          { name: 'Roofers Alsager', href: '/roofers-alsager' },
-          { name: 'Roofers Holmes Chapel', href: '/roofers-holmes-chapel' },
-          { name: 'All Service Areas', href: '/service-areas' },
-        ]}
-        callout={
-          <div className="inline-flex items-center gap-3 px-6 py-4 bg-white border border-gray-300 border-t-2 border-t-brand-orange">
-            <MapPin className="w-5 h-5 text-brand-orange" />
-            <span className="text-sm font-semibold text-brand-navy">
-              Looking for{' '}
-              <Link href="/roofers-sandbach" className="text-brand-orange hover:underline font-bold">
-                roofers in Cheshire
-              </Link>
-              ?
-            </span>
-          </div>
-        }
-      />
+      {/* Our Roofing Services · same section as the homepage, but on brand navy
+          and with every card opening the quote modal rather than being a dead
+          click */}
+      <Services cardsOpenForm dark />
 
       {/* What Inspection Covers */}
       <InspectionChecklist />
@@ -217,6 +197,19 @@ export default function SpecialOfferPage() {
 
       {/* FAQ · cloned from homepage, styled to match this page */}
       <FAQ />
+
+      {/* Areas We Serve · shared internal-linking hub (matches roofers-sandbach).
+          Last on the page, so it closes on the coverage map and its quote CTA. */}
+      <ServiceAreaHub
+        title={
+          <>
+            We Also Serve
+            <br />
+            <span className="text-brand-orange">These Nearby Areas</span>
+          </>
+        }
+        areas={SERVICE_AREA_LINKS}
+      />
 
       {/* Scroll to Top */}
       {showScrollTop && (

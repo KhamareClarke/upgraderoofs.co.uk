@@ -6,6 +6,8 @@ import { CTABanner } from '@/components/CTABanner';
 import { GalleryBlock, FAQBlock, ContactBlock } from '@/components/HomepageSections';
 import { TrackedPhoneLink } from '@/components/TrackedPhoneLink';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
+import { ServiceAreaGrid } from '@/components/ServiceAreaGrid';
+import { orderAreaLinks } from '@/lib/service-areas';
 import { Button } from '@/components/ui/button';
 import { ReviewsSection } from '@/components/ReviewsSection';
 import { MapPin, ArrowRight } from 'lucide-react';
@@ -150,23 +152,10 @@ export default function Home() {
               </span>
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
-            {[
-              { name: 'Roofers Sandbach', href: '/roofers-sandbach' },
-              { name: 'Roofers Crewe', href: '/roofers-crewe' },
-              { name: 'Roofers Middlewich', href: '/roofers-middlewich' },
-              { name: 'Roofers Congleton', href: '/roofers-congleton' },
-              { name: 'Roofers Nantwich', href: '/roofers-nantwich' },
-              { name: 'Roofers Alsager', href: '/roofers-alsager' },
-              { name: 'Roofers Holmes Chapel', href: '/roofers-holmes-chapel' },
-              { name: 'All Service Areas', href: '/service-areas' },
-            ].map((area, i) => (
-              <Link key={i} href={area.href} className="group flex items-center gap-2 p-4 bg-white border border-gray-300 hover:border-brand-navy transition-colors">
-                <MapPin className="w-4 h-4 text-brand-orange flex-shrink-0" />
-                <span className="text-sm font-semibold text-brand-navy group-hover:text-brand-orange transition-colors">{area.name}</span>
-              </Link>
-            ))}
-          </div>
+          <ServiceAreaGrid
+            areas={orderAreaLinks({ lead: '/roofers-sandbach' })}
+            className="mb-8"
+          />
           <div className="text-center">
             <Button
               size="lg"

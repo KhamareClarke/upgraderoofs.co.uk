@@ -18,6 +18,7 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { HeroKicker } from '@/components/HeroKicker';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
 import { TrustBadgeGrid, ServiceAreaHub } from '@/components/SpecialOfferSections';
+import { orderAreaLinks } from '@/lib/service-areas';
 
 export default function OfferSandbachPage() {
   const [mounted, setMounted] = useState(false);
@@ -297,16 +298,7 @@ export default function OfferSandbachPage() {
             </span>
           </div>
         }
-        areas={[
-          { name: 'Roofers Sandbach', href: '/roofers-sandbach' },
-          { name: 'Roofers Crewe', href: '/roofers-crewe' },
-          { name: 'Roofers Middlewich', href: '/roofers-middlewich' },
-          { name: 'Roofers Congleton', href: '/roofers-congleton' },
-          { name: 'Roofers Nantwich', href: '/roofers-nantwich' },
-          { name: 'Roofers Alsager', href: '/roofers-alsager' },
-          { name: 'Roofers Holmes Chapel', href: '/roofers-holmes-chapel' },
-          { name: 'All Service Areas', href: '/service-areas' },
-        ]}
+        areas={orderAreaLinks({ exclude: ['/roofers-sandbach'] })}
       />
 
       {/* Scroll to Top */}

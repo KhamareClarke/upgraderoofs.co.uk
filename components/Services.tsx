@@ -1,17 +1,23 @@
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { BrickWall, Layers, Flame, CloudRain, Sun, Fence, ArrowRight } from 'lucide-react';
 import { QuoteForm } from '@/components/QuoteForm';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
 import Image from 'next/image';
 
-export function Services() {
+export function Services({
+  cardsOpenForm = false,
+  dark = false,
+}: {
+  cardsOpenForm?: boolean;
+  dark?: boolean;
+}) {
   const services = [
     {
       title: 'Tile & Slate Roofs',
       icon: BrickWall,
       image: '/images/6.jpeg',
       alt: 'Professional tile and slate roof installation in Cheshire',
-      gradient: 'from-blue-500/20 to-purple-500/20',
       href: '/services/tile-slate-roofing',
     },
     {
@@ -19,7 +25,6 @@ export function Services() {
       icon: Layers,
       image: '/images/3.jpeg',
       alt: 'EPDM and GRP flat roof installation Cheshire',
-      gradient: 'from-cyan-500/20 to-blue-500/20',
       href: '/services/flat-roofing',
     },
     {
@@ -27,7 +32,6 @@ export function Services() {
       icon: Flame,
       image: '/images/1.jpeg',
       alt: 'Chimney repair and repointing service Cheshire',
-      gradient: 'from-orange-500/20 to-red-500/20',
       href: '/services/chimney-repairs',
     },
     {
@@ -35,7 +39,6 @@ export function Services() {
       icon: CloudRain,
       image: '/images/2.jpeg',
       alt: 'Gutter and fascia installation Cheshire',
-      gradient: 'from-teal-500/20 to-cyan-500/20',
       href: '/services/gutters-fascias',
     },
     {
@@ -43,7 +46,6 @@ export function Services() {
       icon: Sun,
       image: '/images/10.jpeg',
       alt: 'Velux skylight and roof window installation Cheshire',
-      gradient: 'from-yellow-500/20 to-orange-500/20',
       href: '/services/skylights-roof-windows',
     },
     {
@@ -51,25 +53,35 @@ export function Services() {
       icon: Fence,
       image: '/images/4.jpeg',
       alt: 'External wall cladding installation Cheshire',
-      gradient: 'from-slate-500/20 to-gray-500/20',
       href: '/services/cladding',
     },
   ];
 
   return (
-    <section id="services" className="section-padding bg-white relative overflow-hidden">
+    <section
+      id="services"
+      className={`section-padding relative overflow-hidden ${dark ? 'bg-brand-navy' : 'bg-white'}`}
+    >
       <div className="container-custom relative">
         <div className="mb-16">
           <div className="flex items-center gap-4 mb-6">
-            <span className="h-px flex-1 bg-gray-300 sm:flex-none sm:w-16" aria-hidden="true" />
+            <span className={`h-px flex-1 sm:flex-none sm:w-16 ${dark ? 'bg-white/30' : 'bg-gray-300'}`} aria-hidden="true" />
             <span className="text-brand-orange font-semibold text-sm uppercase tracking-[0.2em]">Our Roofing Services</span>
-            <span className="h-px flex-1 bg-gray-300 sm:hidden" aria-hidden="true" />
+            <span className={`h-px flex-1 sm:hidden ${dark ? 'bg-white/30' : 'bg-gray-300'}`} aria-hidden="true" />
           </div>
           <div className="sm:grid sm:grid-cols-2 sm:gap-8 sm:items-end">
-            <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold text-brand-navy leading-tight">
+            <h2
+              className={`text-3xl sm:text-4xl md:text-5xl font-bold leading-tight ${
+                dark ? 'text-white' : 'text-brand-navy'
+              }`}
+            >
               One Local Team for <span className="text-brand-orange">Every Roofing Job</span>
             </h2>
-            <p className="text-lg text-gray-600 leading-relaxed mt-4 sm:mt-0 sm:border-l-4 sm:border-brand-orange sm:pl-6">
+            <p
+              className={`text-lg leading-relaxed mt-4 sm:mt-0 sm:border-l-4 sm:border-brand-orange sm:pl-6 ${
+                dark ? 'text-gray-300' : 'text-gray-600'
+              }`}
+            >
               From a slipped tile to a full roof replacement, one local team handles the whole job. Every one carries a written guarantee.
             </p>
           </div>
@@ -78,11 +90,12 @@ export function Services() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {services.map((service, index) => {
             const Icon = service.icon;
-            return (
-              <div
-                key={index}
-                className="group relative overflow-hidden bg-white border border-gray-300 hover:border-brand-navy transition-colors duration-300"
-              >
+            const cardClass = `group relative overflow-hidden bg-white border transition-colors duration-300 ${
+              dark ? 'border-transparent hover:border-brand-orange' : 'border-gray-300 hover:border-brand-navy'
+            }`;
+
+            const cardBody = (
+              <>
                 <div className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-brand-orange to-brand-orange/0" aria-hidden="true" />
 
                 <div className="relative overflow-hidden h-48">
@@ -110,8 +123,25 @@ export function Services() {
                     <h3 className="font-bold text-white text-2xl">{service.title}</h3>
                   </div>
                 </div>
+              </>
+            );
 
-              </div>
+            // On the homepage the cards link through to the matching service
+            // page. Where `cardsOpenForm` is set they open the same quote modal
+            // as the button below, so no click in this section is a dead one.
+            return cardsOpenForm ? (
+              <QuoteForm
+                key={index}
+                trigger={
+                  <button type="button" className={`${cardClass} w-full text-left`}>
+                    {cardBody}
+                  </button>
+                }
+              />
+            ) : (
+              <Link key={index} href={service.href} className={`${cardClass} block`}>
+                {cardBody}
+              </Link>
             );
           })}
         </div>
@@ -120,13 +150,17 @@ export function Services() {
           <QuoteForm trigger={
             <Button
               size="lg"
-              className="group bg-brand-orange hover:bg-brand-navy text-white font-semibold px-8 py-3 h-12 rounded-lg inline-flex items-center gap-2.5"
+              className={`group bg-brand-orange text-white font-semibold px-8 py-3 h-12 rounded-lg inline-flex items-center gap-2.5 ${
+                // On the navy section a navy hover would dissolve the button into
+                // the background, so it inverts to white instead.
+                dark ? 'hover:bg-white hover:text-brand-navy' : 'hover:bg-brand-navy'
+              }`}
             >
               Get Your Free Quote
               <ArrowRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1" />
             </Button>
           } />
-          <CtaSubMessage className="mt-3" />
+          <CtaSubMessage dark={dark} className="mt-3" />
         </div>
       </div>
     </section>

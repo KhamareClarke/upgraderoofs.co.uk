@@ -1,10 +1,11 @@
 import Image from 'next/image';
-import Link from 'next/link';
-import { MapPin, CheckCircle, ArrowRight } from 'lucide-react';
+import { CheckCircle, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { QuoteForm } from '@/components/QuoteForm';
 import { SectionHeader } from '@/components/SectionHeader';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
+import { ServiceAreaGrid } from '@/components/ServiceAreaGrid';
+import { SERVICE_AREAS_HUB, type ServiceAreaLink } from '@/lib/service-areas';
 
 interface TrustBadge {
   src: string;
@@ -98,9 +99,11 @@ export function TrustBadgeGrid({
 export function ServiceAreaHub({
   kicker = 'Where We Work',
   title = null,
-  subtitle = 'Based in Sandbach, we serve homeowners and businesses throughout south and mid-Cheshire.',
+  subtitle,
   callout = null,
   ctaLabel = 'Request a Free Quote',
+  hubLink = SERVICE_AREAS_HUB,
+  visibleCount = 6,
   areas,
 }: {
   kicker?: string;
@@ -108,6 +111,8 @@ export function ServiceAreaHub({
   subtitle?: string;
   callout?: React.ReactNode;
   ctaLabel?: string;
+  hubLink?: ServiceAreaLink | null;
+  visibleCount?: number;
   areas: ServiceArea[];
 }) {
   return (
@@ -119,22 +124,26 @@ export function ServiceAreaHub({
             <span className="text-brand-orange text-xs sm:text-sm font-semibold uppercase tracking-[0.2em]">{kicker}</span>
             <span className="h-px w-8 sm:w-12 bg-brand-orange" aria-hidden="true" />
           </div>
-          {title ?? (
-            <h2 className="text-2xl sm:text-3xl font-bold text-brand-navy mb-3">
-              Roofing Services Across <span className="text-brand-orange">Cheshire</span>
-            </h2>
-          )}
-          <p className="text-gray-600 max-w-2xl mx-auto mb-6">{subtitle}</p>
+          {/* `title` is the heading's CONTENT, not a stand-in for the <h2>.
+              It used to replace the whole element, so every caller that passed
+              one (special-offer, offer-sandbach, roofers-sandbach) rendered its
+              heading as unstyled body text with no heading tag at all. */}
+          <h2 className="text-2xl sm:text-3xl font-bold text-brand-navy mb-3">
+            {title ?? (
+              <>
+                Roofing Services Across <span className="text-brand-orange">Cheshire</span>
+              </>
+            )}
+          </h2>
+          {subtitle && <p className="text-gray-600 max-w-2xl mx-auto mb-6">{subtitle}</p>}
           {callout}
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
-          {areas.map((area, i) => (
-            <Link key={i} href={area.href} className="group flex items-center gap-2 p-4 bg-white border border-gray-300 hover:border-brand-navy transition-colors">
-              <MapPin className="w-4 h-4 text-brand-orange flex-shrink-0" />
-              <span className="text-sm font-semibold text-brand-navy group-hover:text-brand-orange transition-colors">{area.name}</span>
-            </Link>
-          ))}
-        </div>
+        <ServiceAreaGrid
+          areas={areas}
+          hubLink={hubLink ?? undefined}
+          visibleCount={visibleCount}
+          className="mb-8"
+        />
         <div className="text-center flex flex-col items-center gap-2">
           <QuoteForm
             trigger={
@@ -180,9 +189,11 @@ export function InspectionChecklist({
       <div className="container-custom">
         <div className="max-w-4xl mx-auto text-center">
           <SectionHeader kicker={kicker} title={title} />
-          <div className="grid sm:grid-cols-2 gap-4 text-left max-w-2xl mx-auto mb-8">
+          {/* Centred on mobile so the list sits under the centred heading,
+              then reverts to the two-column left-aligned layout from sm up. */}
+          <div className="grid sm:grid-cols-2 gap-4 text-center sm:text-left max-w-2xl mx-auto mb-8">
             {list.map((item) => (
-              <div key={item} className="flex items-start gap-3">
+              <div key={item} className="flex items-start justify-center sm:justify-start gap-3">
                 <CheckCircle className="w-5 h-5 text-brand-orange flex-shrink-0 mt-0.5" />
                 <span className="text-gray-700">{item}</span>
               </div>
