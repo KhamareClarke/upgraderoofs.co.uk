@@ -83,7 +83,7 @@ export default function SpecialOfferPage() {
         <div className="absolute inset-0">
           <Image
             src="/images/6.jpeg"
-            alt="Professional roof inspection Sandbach Cheshire"
+            alt="Professional roof inspection across Cheshire"
             fill
             className="object-cover scale-110"
             priority

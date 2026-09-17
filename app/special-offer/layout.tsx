@@ -1,16 +1,24 @@
 import type { Metadata } from 'next';
 
+// Cheshire-wide by design. The town-specific offers live on the town pages —
+// /roofers-sandbach owns "free roof inspection Sandbach" — so Sandbach is
+// deliberately absent from this title, description and keyword list, leaving
+// this page as the county-level catch-all. It is noindex (lib/routes.ts), so
+// none of this competes with the indexable pages regardless.
+//
+// The root layout's title template appends "| Upgrade Roofs", so `title` does
+// not carry the brand itself.
 export const metadata: Metadata = {
-  title: 'Free Roof Inspection Sandbach & Cheshire | Upgrade Roofs | 01270 897606',
-  description: 'Claim your FREE roof inspection from Upgrade Roofs. Trusted roofers in Sandbach & Cheshire. 25+ years experience, CORC certified, £10M insured. No obligation. Call 01270 897606.',
+  title: 'Free Roof Inspection Cheshire | 10-Minute Callback',
+  description: 'Claim your FREE roof inspection anywhere in Cheshire. 25+ years experience, CORC certified, £10M insured. No obligation, 10-minute callback.',
   keywords: [
-    'free roof inspection Sandbach',
     'free roof inspection Cheshire',
+    'free roof inspection near me',
     'roof repairs near me',
     'roofing contractors Cheshire',
-    'local roofers Sandbach',
     'roof inspection Crewe',
-    'emergency roof repairs Sandbach',
+    'roof inspection Congleton',
+    'roof inspection Middlewich',
     'roofing company near me'
   ],
   authors: [{ name: 'Upgrade Roofs' }],
@@ -22,7 +30,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'Free Roof Inspection | Limited Time Offer - Upgrade Roofs',
-    description: 'Get a FREE professional roof inspection from experienced roofers. Serving Sandbach & Cheshire. No obligation, no hidden fees.',
+    description: 'Get a FREE professional roof inspection from experienced roofers. Serving homeowners across Cheshire. No obligation, no hidden fees.',
     url: 'https://www.upgraderoofs.co.uk/special-offer',
     siteName: 'Upgrade Roofs',
     images: [
@@ -39,7 +47,7 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'Free Roof Inspection | Limited Time Offer - Upgrade Roofs',
-    description: 'Get a FREE professional roof inspection. No obligation, no hidden fees. Trusted roofers in Sandbach & Cheshire.',
+    description: 'Get a FREE professional roof inspection. No obligation, no hidden fees. Trusted roofers across Cheshire.',
     images: ['https://www.upgraderoofs.co.uk/images/6.jpeg'],
   },
   robots: {

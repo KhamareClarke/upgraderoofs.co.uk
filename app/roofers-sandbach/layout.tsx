@@ -2,13 +2,16 @@ import type { Metadata } from 'next';
 import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 import { TownLocalBusinessSchema } from '@/components/TownLocalBusinessSchema';
 
+// The root layout's title template appends "| Upgrade Roofs", so `title` must
+// not carry the brand itself — the rest of the site currently does, and every
+// one of those pages renders the brand twice.
 export const metadata: Metadata = {
-  title: 'Roofers Sandbach | 5★ Rated | Free Quotes in 24hrs | Upgrade Roofs',
-  description: 'Trusted roofers in Sandbach (CW11) with 127 five-star reviews. Roof repairs, new roofs & flat roofing from a local team based on Crewe Road. 25+ yrs, £10M insured. Call 01270 897606 for a free no-obligation quote.',
-  keywords: 'roofers sandbach, roofer sandbach, roofing sandbach, roofing company sandbach, roof repair sandbach, roofer near me sandbach, new roofs sandbach, emergency roofer sandbach, flat roofing sandbach, tile roofing sandbach',
+  title: 'Free Roof Inspection Sandbach | No Obligation',
+  description: 'Free roof inspection in Sandbach (CW11) from a local team based on Crewe Road. 127 five-star reviews, 25+ years, £10M insured. No obligation.',
+  keywords: 'free roof inspection sandbach, roof inspection sandbach, free roof check sandbach, roof survey sandbach, roofers sandbach, roofer sandbach, roofing sandbach, roofing company sandbach, roof repair sandbach',
   openGraph: {
-    title: 'Roofers Sandbach | 5★ Rated Local Roofers | Upgrade Roofs',
-    description: 'Sandbach\'s trusted roofers. 127 five-star reviews, 25+ years, CORC certified, £10M insured. Free quotes.',
+    title: 'Free Roof Inspection Sandbach | Upgrade Roofs',
+    description: 'Free, no-obligation roof inspection in Sandbach. 127 five-star reviews, 25+ years, CORC certified, £10M insured.',
     url: 'https://www.upgraderoofs.co.uk/roofers-sandbach',
     siteName: 'Upgrade Roofs',
     images: [
@@ -24,8 +27,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Roofers Sandbach | 5★ Rated | Upgrade Roofs',
-    description: 'Trusted roofers in Sandbach. 127 five-star reviews, 25+ years. Free quotes · 01270 897606.',
+    title: 'Free Roof Inspection Sandbach | Upgrade Roofs',
+    description: 'Free, no-obligation roof inspection in Sandbach. 127 five-star reviews, 25+ years · 01270 897606.',
     images: ['https://www.upgraderoofs.co.uk/images/6.jpeg'],
   },
   alternates: {

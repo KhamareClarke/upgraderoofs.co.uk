@@ -25,12 +25,17 @@ export default function RoofersSandbachPage() {
         <div className="container-custom relative z-10">
           <div className="max-w-3xl">
             <HeroKicker className="mb-6">Sandbach, Cheshire</HeroKicker>
+            {/* Sandbach carries the free-inspection offer rather than the generic
+                "roofers" term, which the homepage already owns. "roofers Sandbach"
+                is kept in the paragraph below and in the section headings so the
+                page does not abandon the term outright. */}
             <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-6 leading-tight">
-              Trusted Roofers in <span className="text-brand-orange">Sandbach</span>
+              Free Roof Inspection <span className="text-brand-orange">in Sandbach</span>
             </h1>
             <p className="text-lg sm:text-xl text-white/90 mb-8 max-w-2xl leading-relaxed">
-              Upgrade Roofs has been delivering expert roofing services to Sandbach homeowners for over 25 years. 
-              From emergency repairs to complete re-roofs, we're the local roofers Sandbach trusts.
+              Upgrade Roofs has been the roofers Sandbach trusts for over 25 years. Book a free,
+              no-obligation inspection — we check the tiles, leadwork, gutters and chimney, then
+              give you a written report with photos so you can see for yourself.
             </p>
             <div className="flex flex-col items-center sm:items-start gap-2">
               <QuoteForm trigger={

@@ -210,20 +210,23 @@ export const keywordMap: KeywordEntry[] = [
   // ============================================================
   // LOCAL / TOWN PAGES
   // Each targets "roofers [town]" — never generic service terms.
+  // Sandbach is the exception: it carries the free-inspection offer,
+  // because the homepage already covers "roofers Sandbach" for it.
   // ============================================================
   {
     route: '/roofers-sandbach',
     pageType: 'local-commercial',
-    primaryKeyword: 'roofers in Sandbach',
+    primaryKeyword: 'free roof inspection Sandbach',
     secondaryKeywords: [
-      'Sandbach roofing company',
-      'roof repairs Sandbach',
-      'local roofer Sandbach CW11',
+      'roof inspection Sandbach',
+      'free roof check Sandbach',
+      'roof survey Sandbach CW11',
+      'roofers Sandbach',
     ],
-    titleTag: 'Roofers Sandbach | Trusted Local Roofing Company | Upgrade Roofs',
-    h1: 'Trusted Roofers in Sandbach',
+    titleTag: 'Free Roof Inspection Sandbach | No Obligation | 01270 897606',
+    h1: 'Free Roof Inspection in Sandbach',
     cannibalizationNotes:
-      'Homepage owns "roofers Sandbach" (brand). This page targets "roofers in Sandbach" (local pack, map intent).',
+      'Sandbach is where the business is based, so it carries the offer rather than the generic "roofers" term. The homepage owns "roofers Sandbach"; "roofers" is kept as a secondary keyword here and in the body copy. The term was previously claimed only by /offer-sandbach and /special-offer, both noindex — so no indexable page held it.',
   },
   {
     route: '/roofers-crewe',
@@ -394,9 +397,10 @@ export const keywordMap: KeywordEntry[] = [
       'free roof survey',
       'roof inspection offer',
     ],
-    titleTag: 'Free Roof Inspection | Limited Time | Upgrade Roofs',
-    h1: 'Claim Your Free Roof Inspection',
-    cannibalizationNotes: 'Offer-specific landing page — no overlap with service pages.',
+    titleTag: 'Free Roof Inspection Across Cheshire | 10-Min Callback | 01270 897606',
+    h1: 'Get Your Free Roof Inspection in Cheshire',
+    cannibalizationNotes:
+      'Cheshire-wide, deliberately not town-specific: the town offers live on the town pages. noindex (lib/routes.ts), so it competes with nothing — Sandbach has been dropped from its title and description so it reads as the county-wide catch-all.',
   },
   {
     route: '/offer-sandbach',
@@ -408,7 +412,8 @@ export const keywordMap: KeywordEntry[] = [
     ],
     titleTag: 'Free Roof Inspection Sandbach | Upgrade Roofs',
     h1: 'Free Roof Inspection in Sandbach',
-    cannibalizationNotes: 'Geo-specific variant of /special-offer.',
+    cannibalizationNotes:
+      'Geo-specific variant of /special-offer. noindex, so it does not compete for the term — /roofers-sandbach is the indexable page that owns "free roof inspection Sandbach".',
   },
 
   // ============================================================
