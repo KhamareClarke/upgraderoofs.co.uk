@@ -13,7 +13,10 @@ export function WhyChooseUs() {
   return (
     <section id="about" className="section-padding bg-brand-navy relative overflow-hidden">
       <div className="container-custom">
-        <div className="mb-12">
+        {/* Centred on mobile, left from sm up — the same alignment the h2 and p
+            below declare for themselves. Without it on the parent, the kicker's
+            inline-flex box shrinks to its content and sits left of them. */}
+        <div className="mb-12 text-center sm:text-left">
           <div className="inline-flex items-center gap-3 mb-6">
             <span className="h-px w-8 sm:w-12 bg-brand-orange" aria-hidden="true" />
             <span className="text-brand-orange text-xs sm:text-sm font-semibold uppercase tracking-[0.2em]">Why Cheshire Homeowners Choose Us</span>

@@ -13,7 +13,10 @@ interface HeroKickerProps {
 
 /**
  * Accent-line-flanked kicker badge used above page/section titles.
- * Mirrors the homepage "Est. Sandbach, Cheshire" pattern.
+ *
+ * The homepage hero was the pattern this was extracted from; its own kicker now
+ * reads just "Cheshire" in white. The longer "Est. Sandbach, Cheshire" label
+ * still appears on the two offer pages, which pass it as children in orange.
  */
 export function HeroKicker({ children, align = 'left', light = false, className = '' }: HeroKickerProps) {
   return (

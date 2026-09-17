@@ -11,7 +11,11 @@ export function Hero() {
     <section className="relative min-h-[70vh] lg:min-h-[80vh] flex items-center justify-center overflow-hidden pt-16 pb-20 bg-brand-navy" style={{ contain: 'layout style paint' }}>
       <div className="container-custom relative z-10">
         <div className="max-w-5xl mx-auto text-center">
-          <HeroKicker align="center" className="mb-6 fade-in-up">Est. Sandbach, Cheshire</HeroKicker>
+          {/* `light` so the label is white like the H1 under it. The two offer
+              pages (/special-offer, /offer-sandbach) still carry the longer
+              "Est. Sandbach, Cheshire" kicker in orange — that is deliberate,
+              not an oversight. */}
+          <HeroKicker align="center" light className="mb-6 fade-in-up">Cheshire</HeroKicker>
 
           {/* STATIC H1 - CRITICAL FOR SEO */}
           <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-bold text-white mb-5 text-balance leading-[1.1] tracking-tight px-4 sm:px-0 drop-shadow-2xl">
