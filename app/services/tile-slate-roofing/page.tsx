@@ -1,8 +1,9 @@
 'use client';
 
-import { CheckCircle, Award, Clock, Shield, ChevronRight } from 'lucide-react';
+import { CheckCircle, Award, Clock, Shield, ChevronRight, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
-import { ServiceLeadForm } from '@/components/ServiceLeadForm';
+import { QuoteForm } from '@/components/QuoteForm';
+import { Button } from '@/components/ui/button';
 import { ServiceAreaLinks } from '@/components/ServiceAreaLinks';
 import { SectionHeader } from '@/components/SectionHeader';
 import { HeroKicker } from '@/components/HeroKicker';
@@ -54,7 +55,7 @@ export default function TileSlateRoofingPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <section className="relative h-[300px] sm:h-[350px] md:h-[400px] lg:h-[500px] flex items-center justify-center overflow-hidden">
+      <section className="relative min-h-[300px] sm:min-h-[350px] md:min-h-[400px] lg:min-h-[500px] flex items-center justify-center overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
@@ -74,7 +75,17 @@ export default function TileSlateRoofingPage() {
               Traditional craftsmanship meets modern techniques for beautiful, long-lasting roofs
             </p>
             <div className="flex flex-col items-center sm:items-start gap-2">
-              <ServiceLeadForm serviceName="Tile & Slate Roofing" />
+              <QuoteForm
+                trigger={
+                  <Button
+                    size="lg"
+                    className="group relative bg-brand-orange hover:bg-brand-navy-light text-white font-semibold px-8 text-sm sm:text-base tracking-wide h-12 sm:h-14 rounded-lg shadow-lg shadow-black/20 ring-1 ring-white/10 transition-colors duration-300 inline-flex items-center gap-2.5"
+                  >
+                    Get Your Free Quote
+                    <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-300 group-hover:translate-x-1" />
+                  </Button>
+                }
+              />
               <CtaSubMessage dark />
             </div>
           </div>

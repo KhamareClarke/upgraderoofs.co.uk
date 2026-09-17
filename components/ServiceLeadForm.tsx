@@ -7,11 +7,22 @@ import { supabase, type QuoteRequest } from '@/lib/supabase';
 import { trackQuoteRequest, getGclid } from '@/lib/tracking';
 
 /**
- * Shared client island that renders an inline LeadFormWizard (matching the
- * service/area hero wiring) so bespoke `/services/*` pages satisfy the
- * master "Hero + LeadFormWizard" section order without a modal dialog.
+ * The site-wide lead form card: an inline LeadFormWizard in a bordered white
+ * panel.
+ *
+ * It is rendered in exactly one place — `SiteLeadForm`, which
+ * `ConditionalLayout` mounts above the footer on every page. It used to also sit
+ * inline in the six `/services/*` heroes, which is why it took a `serviceName`
+ * and why the docstring here once described it as an alternative to the modal.
+ * Both are gone: those heroes now carry the standard `QuoteForm` button, and
+ * with one call site the prop had no way to stay honest, so it was removed
+ * rather than left to look configurable.
+ *
+ * `serviceName` is not the only thing that did not survive the move — so did the
+ * per-service heading. The card is deliberately generic now. It appears on ~45
+ * pages, and a heading that names one service is wrong on all the others.
  */
-export function ServiceLeadForm({ serviceName }: { serviceName?: string }) {
+export function ServiceLeadForm() {
   const handleSubmit = async (
     values: Record<string, string>,
     extra: { turnstileToken: string; honeypot: string },
@@ -67,7 +78,7 @@ export function ServiceLeadForm({ serviceName }: { serviceName?: string }) {
     <div className="bg-white p-6 sm:p-8 border border-gray-200 border-l-4 border-l-brand-navy rounded-md shadow-md text-left w-full">
       <div className="text-left mb-6">
         <h3 className="text-2xl font-bold text-brand-navy">
-          Book Your Free {serviceName ? `${serviceName} Inspection` : 'Roof Inspection'}
+          Book Your Free Roof Inspection
         </h3>
         <p className="text-gray-600 mt-1">
           Leave your details and we'll call you back within 10 minutes
