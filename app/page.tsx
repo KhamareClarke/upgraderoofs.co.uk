@@ -144,9 +144,9 @@ export default function Home() {
               <span className="text-sm font-semibold text-brand-navy">
                 Looking for{' '}
                 <Link href="/roofers-sandbach" className="text-brand-orange hover:underline font-bold">
-                  roofers in Sandbach
+                  roofers in Cheshire
                 </Link>
-                ? We're based on Crewe Road, CW11 4NE
+                ?
               </span>
             </div>
           </div>

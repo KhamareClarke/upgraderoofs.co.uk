@@ -5,11 +5,9 @@ import { CtaSubMessage } from '@/components/CtaSubMessage';
 
 export function WhyChooseUs() {
   const benefits = [
-    'Up-front pricing with no hidden costs',
-    'A professional, courteous team on every job',
-    'Over 25 years of roofing experience',
-    'Every job backed by a written guarantee',
-    'One dedicated roofer as your single point of contact',
+    'Up-front pricing, no hidden costs',
+    '25+ years of roofing experience',
+    'One dedicated roofer, one point of contact',
   ];
 
   return (
