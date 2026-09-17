@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Free Roof Inspection Middlewich | Roofers Near Me | 01270 897606',
+  title: 'Free Roof Inspection Middlewich',
   description: 'FREE roof inspection in Middlewich, Cheshire. Local roofers with 25+ years experience. Emergency roof repairs, leak fixes, new roofs. Same day quotes. CORC certified, £10M insured. Call 01270 897606.',
   keywords: 'roof inspection Middlewich, roofers Middlewich, roof repair Middlewich, roofing company Middlewich, emergency roofer Middlewich, flat roof Middlewich, tile roof repair Middlewich, Cheshire roofers',
   openGraph: {

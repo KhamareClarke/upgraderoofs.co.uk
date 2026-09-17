@@ -1,6 +1,13 @@
 export interface ServiceData {
   slug: string;
   name: string;
+  /**
+   * Shorter form, used only in <title> tags — `name` stays the display name
+   * everywhere else (H1, breadcrumbs, body copy). The service×town matrix titles
+   * carry the brand in the literal, so "Skylights & Roof Windows" plus a town
+   * like Newcastle-under-Lyme would render past the ~60 characters Google shows.
+   */
+  shortName?: string;
   description: string;
   url: string;
   breadcrumbLabel: string;
@@ -38,6 +45,7 @@ export const services: ServiceData[] = [
   {
     slug: 'skylights-roof-windows',
     name: 'Skylights & Roof Windows',
+    shortName: 'Skylights',
     breadcrumbLabel: 'Skylights & Roof Windows',
     description: 'Professional skylight and roof window installation in Cheshire. Velux, fixed and opening roof windows. Bringing natural light and ventilation into your home.',
     url: 'https://www.upgraderoofs.co.uk/services/skylights-roof-windows',

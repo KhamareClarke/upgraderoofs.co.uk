@@ -3,7 +3,7 @@ import { BlogArticleSchema } from '@/components/BlogArticleSchema';
 import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 
 export const metadata: Metadata = {
-  title: 'How Long Does a Roof Last? | UK Roof Lifespan Guide',
+  title: 'How Long Does a Roof Last? | UK Guide',
   description: 'How long do different roof types last in the UK? Slate, tile, flat roofing lifespans explained. Expert guide from Cheshire roofing contractors. Free assessments.',
   keywords: 'how long does roof last, roof lifespan UK, slate roof lifespan, tile roof lifespan, flat roof lifespan, when to replace roof',
   openGraph: {

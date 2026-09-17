@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   // (resolve-metadata.js: `if (i < metadataItems.length - 2)`), and here there
   // are only two items — the root layout and this page. So the brand has to be
   // written out in full here, unlike every other page.
-  title: 'Your Trusted Local Roofers in Sandbach & Cheshire | Upgrade Roofs',
+  title: 'Trusted Roofers in Sandbach & Cheshire | Upgrade Roofs',
   description: 'Upgrade Roofs offers expert roof repair, new roofs, and flat roofing in Sandbach, Crewe, and across Cheshire. CORC-certified with 25+ years of experience. Get your free quote today.',
   openGraph: {
     title: 'Upgrade Roofs | Trusted Roofers in Sandbach & Cheshire',

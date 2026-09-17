@@ -73,7 +73,9 @@ This is a Next.js App Router site. SEO is managed through:
    ```
 
 3. **Create the layout** at `app/roofers-newtown/layout.tsx` with metadata:
-   - Title format: `Roofers Newtown | [Unique Differentiator] | 01270 897606 | Upgrade Roofs`
+   - Title format: `Roofers Newtown | [Unique Differentiator]` — no phone number, no
+     brand (the root layout's template appends `| Upgrade Roofs`). See
+     [Title Format by Page Type](#title-format-by-page-type).
    - Include postcode in description
    - Set canonical URL
    - Set `robots: { index: true, follow: true }`
@@ -135,12 +137,37 @@ This is a Next.js App Router site. SEO is managed through:
 
 ### Title Format by Page Type
 
+**Target ≤60 characters rendered.** Google truncates around there, and the brand
+suffix costs 16, so a page's own literal gets 44.
+
+**No phone numbers in titles.** They cost 15 characters of a 60-character budget,
+they don't help ranking, and Google often rewrites them away. The number is in the
+meta description, the header and the footer of every page.
+
+The root layout's `title.template` appends `| Upgrade Roofs`, so these formats
+omit the brand — with two exceptions noted below.
+
 | Type | Format | Example |
 |------|--------|---------|
-| Money page | `[Service] Across Cheshire \| Upgrade Roofs \| 01270 897606` | Roof Repairs Across Cheshire |
-| Town page | `Roofers [Town] \| [Differentiator] \| 01270 897606 \| Upgrade Roofs` | Roofers Crewe \| 4 Miles Away |
-| Blog post | `[Topic] \| [Location] \| Upgrade Roofs` | Emergency Roof Repairs Cheshire |
-| Offer page | `Free Roof Inspection [Town] \| Roofers Near Me \| 01270 897606` | (noindex) |
+| Money page | `[Service] Cheshire \| [Differentiator]` | `Roof Repairs Cheshire \| Same-Day` |
+| Town page | `Roofers [Town] \| [Differentiator]` | `Roofers Crewe \| CW1 & CW2 Roofing` |
+| Blog post | `[Topic] \| [Location]` | `Gutter Maintenance Guide Cheshire` |
+| Service × town | `[Service] [Town] \| Upgrade Roofs` | `Skylights Winsford \| Upgrade Roofs` |
+| Homepage | `[Positioning] \| Upgrade Roofs` | `Trusted Roofers in Sandbach & Cheshire \| Upgrade Roofs` |
+| Offer page | `Free Roof Inspection [Town]` | (noindex) |
+
+The two rows that spell out the brand are the two the template does **not** reach.
+Next stashes the template only for metadata items before the last two, and drops it
+when an item declares a plain-string title (`resolve-metadata.js`):
+
+- **Homepage** — the root page shares its segment with the root layout, leaving only
+  two items, so the template is never stashed.
+- **Service × town** — `app/roofers-<town>/layout.tsx` declares a plain-string title,
+  which wipes the template for everything beneath it.
+
+Never add a `title` to an intermediate `layout.tsx` without checking this: it
+silently strips the brand from every page under it. Run
+`npm run build && node scripts/audit-page-titles.js` after touching any layout.
 
 ### Geographic Targeting
 

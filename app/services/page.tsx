@@ -10,7 +10,7 @@ export const dynamic = 'force-static';
 export const revalidate = false;
 
 export const metadata: Metadata = {
-  title: 'Roofing Services Cheshire | All Services | 01270 897606',
+  title: 'Roofing Services Cheshire',
   description: 'Complete roofing services in Cheshire. Tile & slate roofs, flat roofing, chimney repairs, gutters, fascias, skylights, cladding. 10-year guarantee, £10M insured. Free quotes. Call 01270 897606.',
   keywords: 'roofing services Cheshire, roof installation Cheshire, roof repairs, tile roofing, flat roofing, chimney repairs, gutter installation, skylights, cladding',
   openGraph: {

@@ -6,7 +6,7 @@ import { getService } from '@/lib/service-data';
 const service = getService('gutters-fascias')!;
 
 export const metadata: Metadata = {
-  title: 'Gutters & Fascias Cheshire | uPVC & Cast Iron | 01270 897606',
+  title: 'Gutters & Fascias Cheshire',
   description: 'Professional gutter and fascia installation in Cheshire. uPVC, cast iron, aluminium systems. Soffits, bargeboards, leaf guards. CORC certified, £10M insured. Call 01270 897606.',
   keywords: 'gutters Cheshire, fascias Cheshire, gutter installation, fascia boards, soffits, uPVC guttering, cast iron gutters, gutter repair Cheshire',
   openGraph: {

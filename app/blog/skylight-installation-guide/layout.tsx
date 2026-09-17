@@ -3,7 +3,7 @@ import { BlogArticleSchema } from '@/components/BlogArticleSchema';
 import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 
 export const metadata: Metadata = {
-  title: 'Skylight Installation Guide Cheshire | Velux & Sun Tunnels',
+  title: 'Skylight Installation Guide | Velux',
   description: 'Complete guide to skylight installation in Cheshire. Velux, sun tunnels, flat roof skylights. Types, costs, benefits. Professional installation across Cheshire.',
   keywords: 'skylight installation Cheshire, Velux installer, sun tunnel, roof window, flat roof skylight, natural light',
   openGraph: {

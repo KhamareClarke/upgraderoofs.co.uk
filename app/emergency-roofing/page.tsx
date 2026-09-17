@@ -14,7 +14,7 @@ export const dynamic = 'force-static';
 export const revalidate = false;
 
 export const metadata: Metadata = {
-  title: 'Emergency Roofer Sandbach | 24/7 Storm Damage | 01270 897606',
+  title: 'Emergency Roofer Sandbach | 24/7',
   description: 'Emergency roof repairs in Sandbach & Cheshire. 24/7 call-out. Storm damage, leaks, fallen tiles. Usually on-site within 30 minutes from our Sandbach base. Call 01270 897606 now.',
   keywords: 'emergency roofer Sandbach, emergency roof repairs Sandbach, 24/7 roofer Cheshire, storm damage Sandbach, urgent roof repair',
   openGraph: {

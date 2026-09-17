@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Free Roof Inspection Cheshire | Roofers Near Me | 01270 897606',
+  title: 'Free Roof Inspection Cheshire',
   description: 'FREE roof inspection across Cheshire and North West England. Local roofers with 25+ years experience. Emergency roof repairs, leak fixes, new roofs. Same day quotes. CORC certified, £10M insured. Call 01270 897606.',
   keywords: 'roof inspection Cheshire, roofers Cheshire, roof repair Cheshire, roofing company Cheshire, emergency roofer Cheshire, flat roof Cheshire, tile roof repair Cheshire, North West roofers, Sandbach, Crewe, Middlewich, Congleton',
   openGraph: {

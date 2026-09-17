@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Free Roof Inspection Holmes Chapel | Roofers Near Me | 01270 897606',
+  title: 'Free Roof Inspection Holmes Chapel',
   description: 'FREE roof inspection in Holmes Chapel, Cheshire. Local roofers with 25+ years experience. Emergency roof repairs, leak fixes, new roofs. Same day quotes. CORC certified, £10M insured. Call 01270 897606.',
   keywords: 'roof inspection Holmes Chapel, roofers Holmes Chapel, roof repair Holmes Chapel, roofing company Holmes Chapel, emergency roofer Holmes Chapel, flat roof Holmes Chapel, tile roof repair Holmes Chapel, Cheshire roofers',
   openGraph: {

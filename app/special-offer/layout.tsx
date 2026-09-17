@@ -9,7 +9,7 @@ import type { Metadata } from 'next';
 // The root layout's title template appends "| Upgrade Roofs", so `title` does
 // not carry the brand itself.
 export const metadata: Metadata = {
-  title: 'Free Roof Inspection Cheshire | 10-Minute Callback',
+  title: 'Free Roof Inspection Cheshire | Callback',
   description: 'Claim your FREE roof inspection anywhere in Cheshire. 25+ years experience, CORC certified, £10M insured. No obligation, 10-minute callback.',
   keywords: [
     'free roof inspection Cheshire',

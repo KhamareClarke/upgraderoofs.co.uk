@@ -6,7 +6,7 @@ import { TownLocalBusinessSchema } from '@/components/TownLocalBusinessSchema';
 // not carry the brand itself — the rest of the site currently does, and every
 // one of those pages renders the brand twice.
 export const metadata: Metadata = {
-  title: 'Free Roof Inspection Sandbach | No Obligation',
+  title: 'Free Roof Inspection Sandbach',
   description: 'Free roof inspection in Sandbach (CW11) from a local team based on Crewe Road. 127 five-star reviews, 25+ years, £10M insured. No obligation.',
   keywords: 'free roof inspection sandbach, roof inspection sandbach, free roof check sandbach, roof survey sandbach, roofers sandbach, roofer sandbach, roofing sandbach, roofing company sandbach, roof repair sandbach',
   openGraph: {

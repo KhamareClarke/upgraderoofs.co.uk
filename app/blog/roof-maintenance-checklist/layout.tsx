@@ -3,7 +3,7 @@ import { BlogArticleSchema } from '@/components/BlogArticleSchema';
 import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 
 export const metadata: Metadata = {
-  title: 'Roof Maintenance Checklist Cheshire | Seasonal Guide',
+  title: 'Roof Maintenance Checklist Cheshire',
   description: 'Complete roof maintenance checklist for Cheshire homeowners. Spring and autumn tasks, monthly checks, and when to call professionals. Extend your roof lifespan.',
   keywords: 'roof maintenance checklist, roof care Cheshire, seasonal roof maintenance, roof inspection guide, prevent roof damage',
   openGraph: {

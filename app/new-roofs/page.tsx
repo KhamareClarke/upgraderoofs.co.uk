@@ -15,7 +15,7 @@ export const dynamic = 'force-static';
 export const revalidate = false;
 
 export const metadata: Metadata = {
-  title: 'New Roofs Sandbach & Cheshire | 10-Year Guarantee',
+  title: 'New Roofs Cheshire | 10-Year Guarantee',
   description: 'New roof installations in Sandbach & across Cheshire. Tile, slate, flat roofing. 10-year guarantee, £10M insured. Expert re-roofing from our Sandbach base. Free quotes. Call 01270 897606.',
   keywords: 'new roofs Sandbach, re-roofing Sandbach, new roof Cheshire, roof replacement Sandbach, new tile roof, new slate roof',
   openGraph: {

@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
 
 export const metadata: Metadata = {
-  title: 'How to Spot Roof Damage Before It Gets Expensive | Sandbach & Cheshire',
+  title: 'Spotting Roof Damage Before It Gets Costly',
   description: 'Learn to identify early signs of roof damage in Cheshire. Expert tips from Sandbach roofers to save money on repairs. Free roof inspections available.',
   keywords: 'roof damage signs, roof inspection Sandbach, roof problems Cheshire, roof maintenance, early roof damage',
   openGraph: {

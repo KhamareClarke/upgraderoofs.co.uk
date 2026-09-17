@@ -6,7 +6,7 @@ import { getService } from '@/lib/service-data';
 const service = getService('tile-slate-roofing')!;
 
 export const metadata: Metadata = {
-  title: 'Tile & Slate Roofing Cheshire | Expert Roofers | 01270 897606',
+  title: 'Tile & Slate Roofing Cheshire',
   description: 'Professional tile and slate roofing in Cheshire. Expert installation, repairs and restoration. Traditional craftsmanship, 50+ year lifespan. CORC certified, £10M insured. Free quotes. Call 01270 897606.',
   keywords: 'tile roofing Cheshire, slate roofing Cheshire, tile roof repair, slate roof installation, clay tiles Cheshire, concrete tiles, heritage roofing, listed building roofers',
   openGraph: {

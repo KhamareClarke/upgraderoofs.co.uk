@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
 
 export const metadata: Metadata = {
-  title: 'Flat vs. Tile Roofs – Which Lasts Longer in the UK? | Cheshire Guide',
+  title: 'Flat vs Tile Roofs | Which Lasts Longer?',
   description: 'Compare flat roofing vs tile roofing durability in UK weather. Expert analysis from Sandbach roofers on lifespan, costs, and best choice for your property.',
   keywords: 'flat roof vs tile roof, roof lifespan UK, best roofing materials Cheshire, flat roofing durability Sandbach, tile roof longevity',
   openGraph: {

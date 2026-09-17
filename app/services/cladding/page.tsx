@@ -9,7 +9,7 @@ import { CtaSubMessage } from '@/components/CtaSubMessage';
 import { TrustBadgeGrid, InspectionChecklist, FinalCta } from '@/components/SpecialOfferSections';
 
 export const metadata: Metadata = {
-  title: 'Cladding Installation Cheshire | uPVC & Timber',
+  title: 'Cladding Installation Cheshire',
   description: 'Professional cladding installation in Cheshire. uPVC, timber, modern finishes. Weather-resistant, low maintenance. Transform your property.',
   keywords: 'cladding Cheshire, uPVC cladding, timber cladding, wall cladding installation',
 };

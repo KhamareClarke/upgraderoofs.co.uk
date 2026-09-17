@@ -5,7 +5,7 @@ import { SectionHeader } from '@/components/SectionHeader';
 import { HeroKicker } from '@/components/HeroKicker';
 
 export const metadata: Metadata = {
-  title: 'Roofing Gallery | Completed Projects Cheshire | Before & After',
+  title: 'Roofing Gallery | Completed Projects',
   description: 'View our portfolio of completed roofing projects across Cheshire. Before and after photos. Tile roofs, flat roofs, chimneys, gutters. Quality workmanship showcase.',
   keywords: 'roofing gallery Cheshire, completed roofing projects, roofing portfolio, before after roofing, Cheshire roofing examples, roof transformation',
   openGraph: {

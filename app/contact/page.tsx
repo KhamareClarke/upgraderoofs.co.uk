@@ -9,7 +9,7 @@ import { HeroKicker } from '@/components/HeroKicker';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
 
 export const metadata: Metadata = {
-  title: 'Contact Us | Free Roofing Quote Cheshire | 01270 897606',
+  title: 'Contact Us | Free Roofing Quote',
   description: 'Contact Upgrade Roofs for free quotes. Call 01270 897606. Serving Sandbach, Crewe, Middlewich, Congleton and all Cheshire. Fast response guaranteed.',
   keywords: 'contact roofer Cheshire, roofing quote Cheshire, roofing enquiry, free roof quote, Cheshire roofing contact, emergency roofer contact',
   openGraph: {

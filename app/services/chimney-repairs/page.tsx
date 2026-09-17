@@ -10,7 +10,7 @@ import { CtaSubMessage } from '@/components/CtaSubMessage';
 import { TrustBadgeGrid, InspectionChecklist, FinalCta } from '@/components/SpecialOfferSections';
 
 export const metadata: Metadata = {
-  title: 'Chimney Repairs Cheshire | Repointing & Rebuilds',
+  title: 'Chimney Repairs Cheshire',
   description: 'Professional chimney repairs in Cheshire. Stack repairs, repointing, rebuilds, lead flashing. Keep your chimney safe and functional. Free quotes.',
   keywords: 'chimney repairs Cheshire, chimney repointing, chimney stack repairs, lead flashing',
 };

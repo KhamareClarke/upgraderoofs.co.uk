@@ -12,7 +12,7 @@ export const dynamic = 'force-static';
 export const revalidate = false;
 
 export const metadata: Metadata = {
-  title: 'Roofing Service Areas Cheshire | Sandbach, Crewe, Congleton, Wilmslow & More',
+  title: 'Roofing Service Areas | Cheshire',
   description: 'Professional roofers serving 15 towns across Cheshire · Sandbach, Crewe, Middlewich, Congleton, Nantwich, Alsager, Holmes Chapel, Winsford, Northwich, Macclesfield, Knutsford, Tarporley, Biddulph, Newcastle-under-Lyme & Wilmslow. CORC certified. Free quotes.',
   keywords: 'roofers Cheshire, roofing service areas, roofers Sandbach, roofers Crewe, roofers Congleton, roofers Middlewich, roofers Nantwich, roofers Macclesfield, roofers Knutsford, roofers Wilmslow',
   openGraph: {

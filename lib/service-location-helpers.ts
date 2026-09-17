@@ -15,7 +15,12 @@ export function generateServiceLocationMetadata(townKey: string, serviceSlug: st
   const canonical = `https://www.upgraderoofs.co.uk/${town.slug}/${serviceSlug}`;
 
   return {
-    title: `${service.name} ${town.town} | Upgrade Roofs | ${PHONE_DISPLAY}`,
+    // The brand is written out here rather than left to the root layout's title
+    // template: app/roofers-<town>/layout.tsx declares a plain-string title, which
+    // resets the template for everything beneath it, so these pages never get it
+    // appended. The phone number is deliberately absent — it cost 15 of the ~60
+    // characters Google shows and is already in the description, header and footer.
+    title: `${service.shortName ?? service.name} ${town.town} | Upgrade Roofs`,
     description: `Professional ${service.name.toLowerCase()} in ${town.town} (${town.postcode}). ${town.distanceFromBase}. CORC certified, £10M insured, 10-year guarantee. Free written quotes. Call ${PHONE_DISPLAY}.`,
     openGraph: {
       title: `${service.name} in ${town.town} | Upgrade Roofs`,

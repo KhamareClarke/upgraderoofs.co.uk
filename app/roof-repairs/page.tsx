@@ -15,7 +15,7 @@ export const dynamic = 'force-static';
 export const revalidate = false;
 
 export const metadata: Metadata = {
-  title: 'Roof Repairs Sandbach & Cheshire | Same-Day Service',
+  title: 'Roof Repairs Cheshire | Same-Day',
   description: 'Expert roof repairs in Sandbach & across Cheshire. Leaks, storm damage, missing tiles, ridge repairs. Same-day response from our Sandbach base. 25+ years experience. Call 01270 897606.',
   openGraph: {
     title: 'Roof Repairs Sandbach & Cheshire | Same-Day Service',

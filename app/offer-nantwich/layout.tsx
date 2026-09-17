@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Free Roof Inspection Nantwich | Roofers Near Me | 01270 897606',
+  title: 'Free Roof Inspection Nantwich',
   description: 'FREE roof inspection in Nantwich, Cheshire. Local roofers with 25+ years experience. Emergency roof repairs, leak fixes, new roofs. Same day quotes. CORC certified, £10M insured. Call 01270 897606.',
   keywords: 'roof inspection Nantwich, roofers Nantwich, roof repair Nantwich, roofing company Nantwich, emergency roofer Nantwich, flat roof Nantwich, tile roof repair Nantwich, Cheshire roofers',
   openGraph: {

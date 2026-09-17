@@ -18,7 +18,7 @@ const howToSchema = {
 };
 
 export const metadata: Metadata = {
-  title: 'How to Choose a Roofing Contractor Cheshire | Avoid Cowboy Builders',
+  title: 'Choosing a Roofing Contractor in Cheshire',
   description: 'Expert guide to choosing a reliable roofing contractor in Cheshire. Red flags, green flags, questions to ask. Protect yourself from rogue traders.',
   keywords: 'choose roofing contractor, reliable roofer Cheshire, avoid cowboy builders, roofing contractor checklist, hire roofer safely',
   openGraph: {

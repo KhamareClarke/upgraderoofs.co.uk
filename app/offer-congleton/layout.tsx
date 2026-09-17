@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Free Roof Inspection Congleton | Roofers Near Me | 01270 897606',
+  title: 'Free Roof Inspection Congleton',
   description: 'FREE roof inspection in Congleton, Cheshire. Local roofers with 25+ years experience. Emergency roof repairs, leak fixes, new roofs. Same day quotes. CORC certified, £10M insured. Call 01270 897606.',
   keywords: 'roof inspection Congleton, roofers Congleton, roof repair Congleton, roofing company Congleton, emergency roofer Congleton, flat roof Congleton, tile roof repair Congleton, Cheshire roofers',
   openGraph: {
