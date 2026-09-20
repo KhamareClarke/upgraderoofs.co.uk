@@ -179,13 +179,19 @@ const STATIC_ALLOWLIST = new Set([
   'app/blog/emergency-roof-repairs/layout.tsx',
   'app/special-offer/layout.tsx',
   'app/offer-sandbach/page.tsx',
-  // Error strings shown in the browser when a form fails. Someone reading one is
-  // being told to phone instead — a forwarding number would be wrong for them,
-  // and these render as visible text, not as a dial link.
-  'app/api/send-contact/route.ts',
-  'app/api/send-quote/route.ts',
-  'app/api/send-special-offer/route.ts',
-  'components/LeadFormWizard.tsx',
+  // NOTE: the four error-string entries that used to sit here — the three
+  // /api/send-* routes and components/LeadFormWizard.tsx — were removed on
+  // 2026-09-20. They are no longer needed and that is the point: the number was
+  // taken OUT of those messages rather than allowlisted.
+  //
+  // It was allowlisted on the reasoning that someone reading a failed-submit
+  // message is being told to phone, so a forwarding number would be wrong for
+  // them. That reasoning was backwards. The swap only rewrites what
+  // TrackedPhoneLink renders, so a number typed into a string is unreachable by
+  // it — which meant the one moment a visitor is most likely to dial was the one
+  // place on the site still handing out the untracked number on paid traffic.
+  // The wizard now renders a TrackedPhoneLink under the message and the three
+  // routes carry no number at all.
 ]);
 
 /** Directories outside SCAN_DIRS that carry a published copy of the number. */
