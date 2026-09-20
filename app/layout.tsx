@@ -101,21 +101,35 @@ export default function RootLayout({
         />
         <script
           dangerouslySetInnerHTML={{
-            __html: `window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', '${gadsConvId}');`,
+            // The `config` call is skipped on the private dashboard. It is the
+            // only measurement call left in this file, and firing it would send
+            // a beacon to the Ads account from the one browser guaranteed to
+            // open the dashboard every day — Marcus's own phone. A dashboard
+            // that reports itself as site traffic is measuring the observer.
+            //
+            // `gtag` is still defined and the `js` call still made, so every
+            // other page on the site behaves byte-for-byte as before; this guard
+            // changes nothing except the dashboard. It is a client-side check
+            // specifically so it cannot make this layout dynamic — a server-side
+            // pathname read here would pull all ~106 pages out of static
+            // generation.
+            //
+            // The loader <script> above is deliberately still emitted: it is
+            // shared markup, and gtag.js sends nothing without a config or event
+            // call. The remaining cost on the dashboard is one cached script
+            // fetch, and the benefit is not perturbing the loading order that
+            // attribution depends on. components/Analytics.tsx and
+            // components/ClientWidgets.tsx opt out of the dashboard entirely, so
+            // GTM, GA4 and the cookie banner never load there.
+            __html: `window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); if (!location.pathname.startsWith('/dashboard')) { gtag('config', '${gadsConvId}'); }`,
           }}
         />
         <StructuredData />
       </head>
       <body className="font-sans antialiased">
-        {/* Google Tag Manager (noscript) */}
-        <noscript>
-          <iframe
-            src="https://www.googletagmanager.com/ns.html?id=GTM-5LMDG3F7"
-            height="0"
-            width="0"
-            style={{ display: 'none', visibility: 'hidden' }}
-          />
-        </noscript>
+        {/* The GTM <noscript> iframe is rendered by <Analytics /> rather than
+            here, so that it opts out of the dashboard along with every other
+            tag. See the note there. */}
         <Analytics />
         <ConditionalLayout>{children}</ConditionalLayout>
         <ClientWidgets />

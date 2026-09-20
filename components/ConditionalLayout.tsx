@@ -20,10 +20,24 @@ import { SiteLeadForm } from '@/components/SiteLeadForm';
 const CHROMELESS_PATHS = ['/special-offer'];
 const NO_LEAD_FORM_PATHS = ['/special-offer', '/thank-you'];
 
+/**
+ * The private dashboard opts out by PREFIX, not by exact path.
+ *
+ * Its URL is `/dashboard/<slug>`, and the slug is a secret held in an env var —
+ * so there is no literal to match, and hardcoding one here would both be wrong
+ * and put the secret in source. The dashboard is an installed app that owns the
+ * whole screen: a site header, a footer and a lead-capture form on it would each
+ * be actively wrong, and the form in particular would put a customer-facing
+ * enquiry box inside an internal tool.
+ */
+function isDashboard(pathname: string): boolean {
+  return pathname === '/dashboard' || pathname.startsWith('/dashboard/');
+}
+
 export function ConditionalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isChromeless = CHROMELESS_PATHS.includes(pathname);
-  const showLeadForm = !NO_LEAD_FORM_PATHS.includes(pathname);
+  const isChromeless = isDashboard(pathname) || CHROMELESS_PATHS.includes(pathname);
+  const showLeadForm = !isChromeless && !NO_LEAD_FORM_PATHS.includes(pathname);
 
   return (
     <>
