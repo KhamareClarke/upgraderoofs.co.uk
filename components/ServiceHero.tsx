@@ -7,6 +7,7 @@ import { LeadFormWizard } from '@/components/LeadFormWizard';
 import { HeroKicker } from '@/components/HeroKicker';
 import { trackQuoteRequest, trackPhoneClick, getGclid } from '@/lib/tracking';
 import { usePhoneNumber } from '@/lib/phone-number';
+import { supabase } from '@/lib/supabase';
 import type { ServiceData } from '@/lib/service-data';
 import type { TownData } from '@/lib/town-data';
 
@@ -53,6 +54,40 @@ export function ServiceHero({ service, town }: ServiceHeroProps) {
     });
 
     const result = await response.json();
+
+    // Persist BEFORE acting on the response — same rule and reason as
+    // QuoteForm: this row is the only copy of the lead that survives a GHL or
+    // mail outage, so it must run even on a 5xx, which is when it is the last
+    // copy left. Skipped on 4xx, which are submissions rejected as invalid,
+    // rate-limited, or failed at the CAPTCHA.
+    //
+    // The mapping is explicit rather than a spread on purpose: `formData` above
+    // is the API payload and carries `sameDayCallback` in camelCase, which is
+    // not a column. Spreading it verbatim is rejected for an unknown key
+    // (PGRST204), and supabase-js RESOLVES with `{ error }` rather than
+    // throwing — so the row would disappear with only a console.error to show
+    // for it.
+    if (response.ok || response.status >= 500) {
+      try {
+        const { error: supabaseError } = await supabase.from('quote_requests').insert([
+          {
+            name: formData.name,
+            phone: formData.phone,
+            email: formData.email,
+            postcode: formData.postcode,
+            service_type: formData.service_type,
+            roof_type: formData.roof_type,
+            message: formData.message,
+            same_day_callback: formData.sameDayCallback,
+          },
+        ]);
+        if (supabaseError) {
+          console.error('[lead] Supabase backstop write failed:', supabaseError.code, supabaseError.message);
+        }
+      } catch (supabaseError) {
+        console.error('[lead] Supabase backstop write threw:', supabaseError);
+      }
+    }
 
     if (!response.ok) {
       throw new Error(result.error || 'Failed to submit form');

@@ -457,14 +457,30 @@ async function main() {
   // because the route now returns 502 in exactly that case — so the write must
   // come first, and must be gated on 4xx only.
   console.log(`${C.bold}Client backstop ordering${C.reset}`);
+  //
+  // All eight forms are listed. Four were added on 2026-09-20 (ServiceHero,
+  // AreaHero, and the two offer pages) after an audit found the special-offer
+  // forms in particular had no backstop anywhere in the pipeline — and the
+  // other four were listed here while their table did not exist, so this loop
+  // was passing green on a write that could never land.
+  //
+  // The match is `insert([` rather than `insert([formData])`: the offer forms
+  // and the two heroes send a camelCase API payload, so they map to snake_case
+  // columns explicitly at the call site instead of spreading. Requiring an exact
+  // variable name would fail on the very forms least likely to have been
+  // reviewed. What this check is actually about is ORDER, not the payload.
   for (const form of [
     { file: 'components/QuoteForm.tsx', table: 'quote_requests' },
     { file: 'components/ServiceLeadForm.tsx', table: 'quote_requests' },
+    { file: 'components/ServiceHero.tsx', table: 'quote_requests' },
+    { file: 'components/AreaHero.tsx', table: 'quote_requests' },
+    { file: 'app/special-offer/page.tsx', table: 'quote_requests' },
+    { file: 'app/offer-sandbach/page.tsx', table: 'quote_requests' },
     { file: 'components/ContactForm.tsx', table: 'contact_messages' },
     { file: 'components/EnhancedContactSection.tsx', table: 'contact_messages' },
   ]) {
     const src = fs.readFileSync(path.join(ROOT, form.file), 'utf8');
-    const insertAt = src.indexOf(`.from('${form.table}').insert([formData])`);
+    const insertAt = src.indexOf(`.from('${form.table}').insert([`);
     const throwAt = src.indexOf('throw new Error(result.error');
     if (insertAt < 0) {
       check(false, `${form.file}: writes to ${form.table}`);
