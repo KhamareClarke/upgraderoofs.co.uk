@@ -3,11 +3,24 @@
  *
  * One-off reconciliation of the LIVE Google Ads conversion actions for the
  * spending account (GOOGLE_ADS_CUSTOMER_ID) against the conversion IDs wired
- * into the site via .env.local (NEXT_PUBLIC_GADS_CONV_ID / _CLICK_CONV_ID) and
- * the hardcoded fallbacks in components/Analytics.tsx + lib/tracking.ts.
+ * into the site via .env.local (NEXT_PUBLIC_GADS_CONV_ID / _CLICK_CONV_ID /
+ * _CALL_CONV_ID) and the hardcoded fallbacks in components/Analytics.tsx +
+ * lib/tracking.ts.
  *
  * Emits each conversion action's AW-<id> container so it can be compared
  * directly against the configured values. Secrets are never printed.
+ *
+ * Labels are read from conversion_action.tag_snippets.event_snippet, which is
+ * the only place the API exposes them. Two things depend on that:
+ *
+ *   · A configured target is `AW-<id>/<label>`, but `liveIds` holds bare
+ *     `AW-<id>` values — so a naive membership test reports every labelled
+ *     target as "NOT in account". The account half is checked against the ids
+ *     and the label half against the snippets.
+ *   · For _CALL_CONV_ID especially, "is the account right" is not the whole
+ *     question: a label from a different action in the SAME account is just as
+ *     silently broken. Without the snippet comparison this script would report
+ *     green for a call conversion that can never record anything.
  *
  * Run:  node scripts/reconcile-conversions.js
  */
@@ -45,7 +58,7 @@ async function main() {
   if (GOOGLE_ADS_LOGIN_CUSTOMER_ID) headers['login-customer-id'] = GOOGLE_ADS_LOGIN_CUSTOMER_ID.replace(/\D/g, '');
 
   const body = JSON.stringify({
-    query: `SELECT conversion_action.resource_name, conversion_action.id, conversion_action.name, conversion_action.status, conversion_action.type, conversion_action.category FROM conversion_action`,
+    query: `SELECT conversion_action.resource_name, conversion_action.id, conversion_action.name, conversion_action.status, conversion_action.type, conversion_action.category, conversion_action.tag_snippets FROM conversion_action`,
   });
 
   const result = await new Promise((resolve) => {
@@ -94,26 +107,93 @@ async function main() {
 
   const liveIds = new Set(rows.filter((c) => c.id).map((c) => 'AW-' + c.id));
 
+  // Every label the account actually publishes, harvested from the tag
+  // snippets. These snippets are generated per-action, so the label found here
+  // is the one Google itself would hand out — not a transcription.
+  const liveLabels = new Map(); // 'AW-<id>/<label>' -> action name
+  for (const ca of rows) {
+    if (!ca.id) continue;
+    for (const snippet of ca.tagSnippets || []) {
+      // e.g. {'send_to': 'AW-17763560213/eU-fCJyQkPkcEJXWqZZC'}
+      // BOTH fields, joined — not `||`. `globalSiteTag` is always non-empty (it
+      // is the bare `gtag('config', 'AW-…')` loader) and carries NO label; the
+      // label appears only in `eventSnippet`. Taking the first truthy field
+      // meant this never found a single label, which then made every labelled
+      // target look like it belonged to no action in the account.
+      const text = [snippet.globalSiteTag, snippet.eventSnippet].filter(Boolean).join('\n');
+      for (const m of text.matchAll(/AW-\d+\/[\w-]+/g)) {
+        liveLabels.set(m[0], ca.name || '?');
+      }
+    }
+  }
+
   // Configured values (presence only — values themselves ARE the info we want,
   // these are conversion-action IDs, not secrets).
   const configured = [
     ['NEXT_PUBLIC_GADS_CONV_ID       (lead form)', process.env.NEXT_PUBLIC_GADS_CONV_ID],
     ['NEXT_PUBLIC_GADS_CLICK_CONV_ID (phone/WA tap)', process.env.NEXT_PUBLIC_GADS_CLICK_CONV_ID],
+    ['NEXT_PUBLIC_GADS_CALL_CONV_ID  (completed call)', process.env.NEXT_PUBLIC_GADS_CALL_CONV_ID],
     ['NEXT_PUBLIC_GADS_ID            (remarketing)', process.env.NEXT_PUBLIC_GADS_ID],
   ];
 
   console.log('\nConfigured vs LIVE:');
-  for (const [label, val] of configured) {
-    const ok = val && liveIds.has(val);
-    console.log('  ' + label + ' : ' + (val || '<unset>') + (val ? (ok ? '   ✔ LIVE' : '   ✖ NOT in account') : ''));
+  for (const [label, raw] of configured) {
+    const val = raw && raw.trim();
+    if (!val) {
+      console.log('  ' + label + ' : <unset>');
+      continue;
+    }
+    // A labelled target must match the label Google publishes, not merely the
+    // account. A bare account id can only be checked for existence.
+    const verdict = liveLabels.has(val)
+      ? '   ✔ LIVE (label matches "' + liveLabels.get(val) + '")'
+      : liveIds.has(val)
+        ? '   ✔ LIVE'
+        : liveIds.has(val.split('/')[0])
+          ? '   ✖ account exists, but that label does NOT belong to any action — records NOTHING'
+          : '   ✖ NOT in account';
+    console.log('  ' + label + ' : ' + val + verdict);
   }
 
-  // Hardcoded fallbacks found in components/Analytics.tsx / lib/tracking.ts.
-  const fallbacks = ['AW-7693225904', 'AW-8479028400', 'AW-17763560213'];
-  console.log('\nHardcoded fallback IDs (Analytics.tsx / tracking.ts):');
-  for (const f of fallbacks) {
-    console.log('  ' + f + (liveIds.has(f) ? '   ✔ LIVE' : '   ✖ NOT a conversion action (or stale)'));
+  console.log('\nLabels published by this account (from tag_snippets):');
+  if (liveLabels.size === 0) {
+    console.log('  (none returned — the token may lack access to snippet generation)');
   }
+  for (const [target, name] of liveLabels) {
+    console.log('  ' + target + '   ' + name);
+  }
+
+  // Hardcoded ids found in components/Analytics.tsx / lib/tracking.ts.
+  //
+  // Two things made the first version of this section actively misleading and
+  // both are fixed here. It reported a REMOVED action as "✔ LIVE" — the id
+  // exists, but a removed action can never record anything, so the check was
+  // green for exactly the failure it was meant to catch. And it treated a bare
+  // `AW-17763560213` as a missing conversion action, when that value is the
+  // account's conversion ID — the container in `gtag('config', …)`, which is
+  // never itself an action id.
+  const statusById = new Map(rows.filter((c) => c.id).map((c) => ['AW-' + c.id, c.status || '?']));
+  const containers = ['AW-17763560213', 'AW-8479028400'];
+  console.log('\nHardcoded ids (Analytics.tsx / tracking.ts):');
+  for (const f of ['AW-7693225904', 'AW-17763560213', 'AW-8479028400']) {
+    if (containers.includes(f)) {
+      console.log('  ' + f + '   · conversion-id container (not a conversion action) — expected');
+      continue;
+    }
+    const status = statusById.get(f);
+    console.log(
+      '  ' + f + '   ' +
+        (status === 'ENABLED'
+          ? '✔ ENABLED'
+          : status
+            ? `✖ ${status} — an action in this state records nothing`
+            : '✖ not a conversion action in this account'),
+    );
+  }
+  // The container the site actually loads the Google tag for. If a label's
+  // account half is not this, the label belongs to a different tag and nothing
+  // will record.
+  console.log('\n  ⓘ every label above must start with the container the site loads.');
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
