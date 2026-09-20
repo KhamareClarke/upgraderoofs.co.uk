@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { TurnstileWidget } from '@/components/TurnstileWidget';
+import { TrackedPhoneLink } from '@/components/TrackedPhoneLink';
 import { Loader2, ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -98,11 +99,31 @@ export function LeadFormWizard({ config }: { config: LeadFormWizardConfig }) {
   const [turnstileToken, setTurnstileToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Whether the error box also offers the phone number.
+   *
+   * Kept separate from `error` on purpose. The same box renders both "please
+   * enter your postcode" and "we could not reach the server", and a number
+   * under the first reads as though the form is broken. Only a failed SUBMIT
+   * sets this.
+   *
+   * The number is rendered as a <TrackedPhoneLink>, never as text — this wizard
+   * is the shared form behind all eight lead forms, so a hardcoded number here
+   * would be the one number on the page Google's forwarding swap cannot reach,
+   * shown at the exact moment a frustrated visitor is most likely to dial it.
+   */
+  const [errorCanCall, setErrorCanCall] = useState(false);
   const [success, setSuccess] = useState(false);
+
+  /** Clears the error box and, with it, the offer to phone instead. */
+  const clearError = () => {
+    setError(null);
+    setErrorCanCall(false);
+  };
 
   const update = (key: string, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }));
-    if (error) setError(null);
+    if (error) clearError();
   };
 
   const roofKey = keys.roofType;
@@ -127,7 +148,7 @@ export function LeadFormWizard({ config }: { config: LeadFormWizardConfig }) {
       setError('Please fill in your name, phone number, and select the service you need and your roof type.');
       return;
     }
-    setError(null);
+    clearError();
     setStep(2);
   };
 
@@ -149,13 +170,18 @@ export function LeadFormWizard({ config }: { config: LeadFormWizardConfig }) {
     }
 
     setLoading(true);
-    setError(null);
+    clearError();
 
     try {
       await config.onSubmit(values, { turnstileToken, honeypot });
       setSuccess(true);
     } catch (err: any) {
-      setError(err?.message || 'Something went wrong. Please try again or call us directly at 01270 897606.');
+      // No number in this string. The three API routes used to append one, and
+      // their text renders verbatim in the box below — so a message carrying the
+      // real number would bypass the swap even once this component was fixed.
+      // They have been stripped; the tracked link renders underneath instead.
+      setError(err?.message || 'Something went wrong. Please try again.');
+      setErrorCanCall(true);
     } finally {
       setLoading(false);
     }
@@ -340,6 +366,15 @@ export function LeadFormWizard({ config }: { config: LeadFormWizardConfig }) {
           {error && (
             <div className="rounded-md border border-red-200 bg-red-50 p-3">
               <p className="text-sm text-red-800">{error}</p>
+              {errorCanCall && (
+                <p className="mt-1 text-sm text-red-800">
+                  You can also call us on{' '}
+                  <TrackedPhoneLink
+                    placement="lead_form_error"
+                    className="font-semibold underline underline-offset-2"
+                  />
+                </p>
+              )}
             </div>
           )}
 

@@ -245,7 +245,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'We could not record your request. Please call us on 01270 897 606.',
+          // No phone number in this string ON PURPOSE. The wizard renders it
+          // verbatim, so a number typed here is a number Google's forwarding
+          // swap cannot reach — on the one message that is shown to a visitor
+          // whose lead has just failed to submit. The form appends a tracked
+          // link underneath instead.
+          error: 'We could not record your request. Please try again.',
           ghl: 'failed',
           email_error: emailError,
         },
