@@ -351,7 +351,11 @@ function digits(v) {
     if (existing.phoneCallDurationSeconds === undefined) {
       console.log('    ⚠ its minimum call duration is unset. ValidateOnly below will not change it;');
       console.log('      set it in the UI: Tools → Conversions → the action → Edit → Count.');
-    } else if (existing.phoneCallDurationSeconds !== MIN_CALL_DURATION_SECONDS) {
+      // Number(), not a bare !==. The Ads API returns int64 fields as STRINGS,
+      // so a stored 60 arrives as "60" and a strict compare against the numeric
+      // 60 is always true — which printed a self-contradicting
+      // "its minimum call duration is 60s, not 60s" on a correct account.
+    } else if (Number(existing.phoneCallDurationSeconds) !== Number(MIN_CALL_DURATION_SECONDS)) {
       console.log(`    ⚠ its minimum call duration is ${existing.phoneCallDurationSeconds}s, not ${MIN_CALL_DURATION_SECONDS}s.`);
       console.log('      Not changed automatically — edit it in the UI if that is not deliberate.');
     }
@@ -488,9 +492,14 @@ function digits(v) {
       updateMask: 'call_reporting_setting.call_conversion_action',
     };
 
+    // `operation`, SINGULAR — CustomerService.MutateCustomer takes one
+    // CustomerOperation, where conversionActions:mutate takes an `operations`
+    // array. Sending the plural here is rejected with 'Unknown name
+    // "operations": Cannot find field', which is easy to misread as a bad
+    // updateMask rather than as the wrong envelope.
     const dry = await post(`/${API_VERSION}/customers/${customerId}:mutate`, headers, {
       validateOnly: true,
-      operations: [repointOp],
+      operation: repointOp,
     });
     if (dry.status !== 200) {
       console.error(`    ✘ repoint: validateOnly rejected it (HTTP ${dry.status})`);
@@ -499,7 +508,7 @@ function digits(v) {
       console.error('      Tools → Conversions → Settings → "Call conversions from website".');
     } else {
       const res = await post(`/${API_VERSION}/customers/${customerId}:mutate`, headers, {
-        operations: [repointOp],
+        operation: repointOp,
       });
       if (res.status !== 200) {
         console.error(`    ✘ repoint: HTTP ${res.status}`);
