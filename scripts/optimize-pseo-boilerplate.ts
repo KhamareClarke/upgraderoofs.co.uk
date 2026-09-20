@@ -7,9 +7,16 @@
  *
  *   1. CENTRALISE PHONE NUMBERS — replace every hardcoded phone variant
  *      (tel:01270897606, "01270 897606", "01270 897 606") in the programmatic
- *      town/matrix templates and data with PHONE_TEL / PHONE_DISPLAY imported
- *      from lib/contact.ts (the single source of truth — see
+ *      town/matrix templates and data with PHONE_DISPLAY imported from
+ *      lib/contact.ts (the single source of truth — see
  *      [[project_contact_tracking]]).
+ *
+ *      In `<TrackedPhoneLink>` the href is DELETED rather than repointed at
+ *      PHONE_TEL: the component defaults to the live number, which is what lets
+ *      Google's call-tracking swap reach it. A static href dials fine and is
+ *      untrackable — the failure is invisible in every grep for `tel:`.
+ *      PHONE_TEL therefore has no remaining consumer in these templates and is
+ *      not imported.
  *
  *   2. DIFFERENTIATE SHARED SOLUTION STRINGS — stop the 90 service×town matrix
  *      pages rendering the byte-identical ServiceData.description everywhere.
@@ -84,7 +91,9 @@ function centralisePhonesInComponents(): void {
   let area = readFileSync(areaPath, 'utf8');
   const areaBefore = area;
 
-  area = addNamedImport(area, '@/lib/contact', ['PHONE_DISPLAY', 'PHONE_TEL']).source;
+  // PHONE_TEL is deliberately NOT imported: the href is dropped rather than
+  // pointed at the constant, so this file would end up with an unused import.
+  area = addNamedImport(area, '@/lib/contact', ['PHONE_DISPLAY']).source;
 
   // JSX text nodes use {PHONE_DISPLAY}; attribute href uses {PHONE_TEL}.
   // Order matters: replace the tel: attribute before the display text.
@@ -92,12 +101,18 @@ function centralisePhonesInComponents(): void {
     // Hero highlight box
     ['📞 01270 897606', '📞 {PHONE_DISPLAY}'],
     // Hero TrackedPhoneLink (href + visible span)
-    ['href="tel:01270897606" placement="area_page_hero"', 'href={PHONE_TEL} placement="area_page_hero"'],
+    // NOTE: the href is DROPPED, not repointed at PHONE_TEL. A static
+    // `href={PHONE_TEL}` renders and dials correctly but can never be swapped
+    // for a Google Ads forwarding number, so it silently opts that link out of
+    // call tracking while looking perfectly migrated. TrackedPhoneLink defaults
+    // its href to the LIVE number; let it. Same for the visible span below —
+    // see centralisePhonesInComponents' header.
+    ['href="tel:01270897606" placement="area_page_hero"', 'placement="area_page_hero"'],
     ['<span className="!text-white">01270 897 606</span>', '<span className="!text-white">{PHONE_DISPLAY}</span>'],
     // Quick-answer <dd> (JSX text) — "Call 01270 897 606 for emergencies."
     ['Call 01270 897 606 for emergencies.', 'Call {PHONE_DISPLAY} for emergencies.'],
     // CTA TrackedPhoneLink
-    ['href="tel:01270897606" placement="area_page_cta"', 'href={PHONE_TEL} placement="area_page_cta"'],
+    ['href="tel:01270897606" placement="area_page_cta"', 'placement="area_page_cta"'],
     // CTA footer line
     ['Call: 01270 897 606', 'Call: {PHONE_DISPLAY}'],
   ];
@@ -126,13 +141,14 @@ function centralisePhonesInComponents(): void {
   let svc = readFileSync(svcPath, 'utf8');
   const svcBefore = svc;
 
-  svc = addNamedImport(svc, '@/lib/contact', ['PHONE_DISPLAY', 'PHONE_TEL']).source;
+  svc = addNamedImport(svc, '@/lib/contact', ['PHONE_DISPLAY']).source;
 
   const svcReplacements: [string, string][] = [
     ['📞 01270 897606', '📞 {PHONE_DISPLAY}'],
-    ['href="tel:01270897606" placement="service_location_hero"', 'href={PHONE_TEL} placement="service_location_hero"'],
+    // href dropped for the same reason as the area template above.
+    ['href="tel:01270897606" placement="service_location_hero"', 'placement="service_location_hero"'],
     ['<span className="!text-white">01270 897 606</span>', '<span className="!text-white">{PHONE_DISPLAY}</span>'],
-    ['href="tel:01270897606" placement="service_location_cta"', 'href={PHONE_TEL} placement="service_location_cta"'],
+    ['href="tel:01270897606" placement="service_location_cta"', 'placement="service_location_cta"'],
     ['Call: 01270 897 606', 'Call: {PHONE_DISPLAY}'],
   ];
   for (const [from, to] of svcReplacements) {

@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { LeadFormWizard } from '@/components/LeadFormWizard';
 import { HeroKicker } from '@/components/HeroKicker';
 import { trackQuoteRequest, trackPhoneClick, getGclid } from '@/lib/tracking';
-import { PHONE_DISPLAY } from '@/lib/contact';
+import { usePhoneNumber } from '@/lib/phone-number';
 
 interface AreaHeroProps {
   town: string;
@@ -33,6 +33,10 @@ interface AreaHeroProps {
  * `app/special-offer/page.tsx`.
  */
 export function AreaHero({ town, heading, kicker }: AreaHeroProps) {
+  // Google Ads may swap this for a forwarding number on ad traffic; organic and
+  // direct visitors get the real line. See lib/phone-number.
+  const phone = usePhoneNumber();
+
   const handleSubmit = async (
     values: Record<string, string>,
     extra: { turnstileToken: string; honeypot: string },
@@ -116,7 +120,7 @@ export function AreaHero({ town, heading, kicker }: AreaHeroProps) {
           <div className="bg-white p-8 border border-gray-200 border-l-4 border-l-brand-navy">
             <div className="text-center mb-8">
               <a
-                href="tel:01270897606"
+                href={phone.tel}
                 onClick={handlePhoneClick}
                 className="block w-full border-2 border-brand-navy p-5 mb-6 text-center hover:border-brand-orange transition-colors"
               >
@@ -124,7 +128,7 @@ export function AreaHero({ town, heading, kicker }: AreaHeroProps) {
                   Call us direct
                 </span>
                 <span className="block mt-1 text-2xl font-bold text-brand-navy">
-                  {PHONE_DISPLAY}
+                  {phone.display}
                 </span>
                 <span className="block mt-1 text-sm text-gray-600">
                   We answer straight away

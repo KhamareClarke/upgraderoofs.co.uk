@@ -254,10 +254,11 @@ export default function RoofRepairsPage() {
             />
             <div className="flex flex-col items-center gap-2">
               <Button size="lg" className="bg-brand-orange hover:bg-brand-orange/90 !text-white font-bold px-10 h-14" asChild>
-                <TrackedPhoneLink href="tel:01270897606" placement="roof_repairs_bottom_cta">
-                  <Phone className="w-5 h-5 mr-2" />
-                  Call 01270 897 606
-                </TrackedPhoneLink>
+                <TrackedPhoneLink
+                  placement="roof_repairs_bottom_cta"
+                  icon={<Phone className="w-5 h-5 mr-2" />}
+                  prefix="Call "
+                />
               </Button>
               <CtaSubMessage dark />
             </div>

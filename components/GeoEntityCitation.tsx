@@ -1,5 +1,5 @@
 import { MapPin, PhoneCall, ShieldCheck, Medal, ChevronDown } from 'lucide-react';
-import { TrackedPhoneLink } from '@/components/TrackedPhoneLink';
+import { TrackedPhoneLink, PhoneNumberText } from '@/components/TrackedPhoneLink';
 
 interface GeoEntityCitationProps {
   /** Town name for localized citation, e.g. "Sandbach". Omit for a Cheshire-wide citation. */
@@ -46,13 +46,13 @@ export function GeoEntityCitation({ town, postcode }: GeoEntityCitationProps) {
             workmanship guarantee on all roofing work. Services include roof repairs, new
             roofs, re-roofing, flat roofing (EPDM &amp; GRP), chimney repairs, guttering, and
             24/7 emergency call-outs across {coverage}. Free written quotes · call{' '}
-            <TrackedPhoneLink href="tel:01270897606" placement="entity_citation" className="text-brand-orange font-semibold hover:underline">01270 897 606</TrackedPhoneLink>.
+            <TrackedPhoneLink placement="entity_citation" className="text-brand-orange font-semibold hover:underline" />.
           </p>
           <div className="flex flex-wrap gap-3 sm:gap-4 mt-3 text-xs text-gray-600">
             <span className="inline-flex items-center gap-1.5"><Medal className="w-3.5 h-3.5 text-brand-orange" /> CORC Certified</span>
             <span className="inline-flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 text-brand-orange" /> £10M Public Liability Insured</span>
             <span className="inline-flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5 text-brand-orange" /> 20 Crewe Rd, Sandbach CW11 4NE</span>
-            <span className="inline-flex items-center gap-1.5"><PhoneCall className="w-3.5 h-3.5 text-brand-orange" /> 01270 897 606</span>
+            <span className="inline-flex items-center gap-1.5"><PhoneCall className="w-3.5 h-3.5 text-brand-orange" /> <PhoneNumberText /></span>
           </div>
         </div>
       </details>

@@ -22,7 +22,7 @@ export function CTABanner() {
                 className="group bg-brand-orange hover:bg-brand-navy-light text-white font-semibold px-7 sm:px-8 h-12 sm:h-14 md:h-14 rounded-lg shadow-lg shadow-black/20 ring-1 ring-white/10 transition-colors duration-300 w-full sm:w-auto inline-flex items-center gap-2.5"
                 asChild
               >
-                <TrackedPhoneLink href="tel:01270897606" placement="cta_banner_book" className="text-white flex items-center justify-center gap-2.5">
+                <TrackedPhoneLink placement="cta_banner_book" className="text-white flex items-center justify-center gap-2.5">
                   Call Now for a Free Quote
                   <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-300 group-hover:translate-x-1" />
                 </TrackedPhoneLink>

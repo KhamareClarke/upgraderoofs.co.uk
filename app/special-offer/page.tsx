@@ -5,6 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { ArrowUp } from 'lucide-react';
 import { trackQuoteRequest, trackPhoneClick, getGclid } from '@/lib/tracking';
+import { usePhoneNumber } from '@/lib/phone-number';
 import Image from 'next/image';
 import { LeadFormWizard } from '@/components/LeadFormWizard';
 import { Services } from '@/components/Services';
@@ -15,6 +16,8 @@ import { TrustBadgeGrid, ServiceAreaHub, InspectionChecklist, FinalCta } from '@
 import { SERVICE_AREA_LINKS } from '@/lib/service-areas';
 
 export default function SpecialOfferPage() {
+  // Swapped for a Google Ads forwarding number on ad traffic. See lib/phone-number.
+  const phone = usePhoneNumber();
   const [mounted, setMounted] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -117,7 +120,7 @@ export default function SpecialOfferPage() {
             <div className="bg-white p-8 border border-gray-200 border-l-4 border-l-brand-navy">
               <div className="text-center mb-8">
                 <a
-                  href="tel:01270897606"
+                  href={phone.tel}
                   onClick={handlePhoneClick}
                   className="block w-full border-2 border-brand-navy p-5 mb-6 text-center hover:border-brand-orange transition-colors"
                 >
@@ -125,7 +128,7 @@ export default function SpecialOfferPage() {
                     Call us direct
                   </span>
                   <span className="block mt-1 text-2xl font-bold text-brand-navy">
-                    01270 897 606
+                    {phone.display}
                   </span>
                   <span className="block mt-1 text-sm text-gray-600">
                     We answer straight away

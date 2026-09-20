@@ -107,12 +107,9 @@ export function Footer() {
                 <PhoneCall className="w-5 h-5 text-brand-orange flex-shrink-0" />
                 <div className="space-y-1.5">
                   <TrackedPhoneLink
-                    href="tel:01270897606"
                     placement="footer_landline"
                     className="block text-white/70 hover:text-brand-orange transition-colors duration-300 text-sm tracking-wide"
-                  >
-                    01270 897 606
-                  </TrackedPhoneLink>
+                  />
                 </div>
               </div>
 

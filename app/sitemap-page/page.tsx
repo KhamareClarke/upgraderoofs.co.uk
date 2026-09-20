@@ -1,7 +1,8 @@
 import type { Metadata } from 'next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TrackedPhoneLink } from '@/components/TrackedPhoneLink';
+import { TrackedPhoneLink, PhoneNumberText } from '@/components/TrackedPhoneLink';
+import { PHONE_TEL } from '@/lib/contact';
 import {
   Home, 
   Info, 
@@ -92,10 +93,14 @@ const quickActions = [
   },
   {
     title: 'Call Now',
-    url: 'tel:01270897606',
+    // The constant is used only as the `startsWith('tel:')` PREDICATE below —
+    // the link itself takes the live number, so Google's swap reaches it.
+    url: PHONE_TEL,
     icon: Mail,
     color: 'bg-green-500',
-    description: '01270 897606 - Immediate assistance'
+    // Rendered through PhoneNumberText rather than as a literal so this card
+    // cannot disagree with the phone link right beside it.
+    description: <><PhoneNumberText /> - Immediate assistance</>,
   },
   {
     title: 'View Services',
@@ -151,7 +156,7 @@ export default function SitemapPage() {
                   <p className="text-sm text-gray-600 mb-4">{action.description}</p>
                   <Button className="w-full bg-brand-orange hover:bg-brand-orange/90 text-white" asChild>
                     {action.url.startsWith('tel:') ? (
-                      <TrackedPhoneLink href={action.url} placement="sitemap_page">
+                      <TrackedPhoneLink placement="sitemap_page">
                         Access Now
                         <ArrowRight className="w-4 h-4 ml-2" />
                       </TrackedPhoneLink>
@@ -255,7 +260,7 @@ export default function SitemapPage() {
                   </p>
                   <div className="flex flex-col items-center gap-2">
                     <Button className="bg-green-500 hover:bg-green-600 text-white" asChild>
-                      <TrackedPhoneLink href="tel:01270897606" placement="sitemap_page">Call Now</TrackedPhoneLink>
+                      <TrackedPhoneLink placement="sitemap_page">Call Now</TrackedPhoneLink>
                     </Button>
                     <CtaSubMessage dark={false} />
                   </div>

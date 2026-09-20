@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
-import { trackContactForm, trackPhoneClick, trackWhatsAppClick, trackEmailClick, getGclid } from '@/lib/tracking';
+import { trackContactForm, trackWhatsAppClick, trackEmailClick, getGclid } from '@/lib/tracking';
+import { TrackedPhoneLink } from '@/components/TrackedPhoneLink';
 import { LeadFormWizard } from '@/components/LeadFormWizard';
 import {
   CheckCircle2,
@@ -129,10 +130,10 @@ export function EnhancedContactSection() {
                       Send Another Message
                     </Button>
                     <Button asChild className="bg-brand-orange hover:bg-brand-orange/90">
-                      <a href="tel:01270897606" onClick={() => trackPhoneClick('contact_form_success')}>
+                      <TrackedPhoneLink placement="contact_form_success">
                         <PhoneCall className="w-4 h-4 mr-2" />
                         Call Now
-                      </a>
+                      </TrackedPhoneLink>
                     </Button>
                   </div>
                 </div>
@@ -179,13 +180,10 @@ export function EnhancedContactSection() {
                   <div>
                     <h3 className="font-semibold text-white">Call Us</h3>
                     <p className="text-gray-300 text-sm mb-1">Get immediate assistance</p>
-                    <a
-                      href="tel:01270897606"
+                    <TrackedPhoneLink
+                      placement="contact_sidebar"
                       className="text-brand-orange font-semibold hover:underline"
-                      onClick={() => trackPhoneClick('contact_sidebar')}
-                    >
-                      01270 897 606
-                    </a>
+                    />
                   </div>
                 </div>
 

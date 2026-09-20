@@ -9,6 +9,13 @@
  *      matching FAQPage JSON-LD block (1:1 with the visible text).
  *   2. Adds the `TrackedPhoneLink` import when not already present.
  *
+ * The FAQ section it emits ends in a `<TrackedPhoneLink>` that carries NO href
+ * and NO number in its children, and puts "Call Us: " in `prefix` instead. That
+ * is deliberate and load-bearing: the component renders the live number itself,
+ * so Google's call-tracking number swap can reach it. A hardcoded href or a
+ * number typed as children would look correct and silently dial the real line
+ * on every ad visit. If you edit the template below, keep it that way.
+ *
  * The three Q&As per page cover costs, durability/materials, and guarantees —
  * all written with local (Cheshire) intent to maximise answer-engine capture.
  *
@@ -215,12 +222,10 @@ ${faqItems}
             <div className="mt-8 text-center">
               <p className="text-sm text-gray-600 mb-3">Still have questions?</p>
               <TrackedPhoneLink
-                href="tel:01270897606"
                 placement="faq_section"
+                prefix="Call Us: "
                 className="inline-flex items-center justify-center px-6 py-2.5 bg-brand-orange hover:bg-brand-orange/90 text-white font-semibold rounded-lg transition-colors text-sm"
-              >
-                Call Us: 01270 897 606
-              </TrackedPhoneLink>
+              />
             </div>
           </div>
         </div>

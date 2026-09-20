@@ -98,12 +98,10 @@ export function FAQ() {
           <div className="mt-8 sm:mt-10 md:mt-12 text-center">
             <p className="text-sm sm:text-base text-gray-600 mb-3 sm:mb-4">Still have questions?</p>
             <TrackedPhoneLink
-              href="tel:01270897606"
               placement="faq_section"
+              prefix="Call Us: "
               className="inline-flex items-center justify-center px-6 sm:px-8 py-2.5 sm:py-3 bg-brand-orange hover:bg-brand-orange/90 text-white font-semibold rounded-lg transition-colors text-sm sm:text-base"
-            >
-              Call Us: 01270 897 606
-            </TrackedPhoneLink>
+            />
           </div>
         </div>
       </div>

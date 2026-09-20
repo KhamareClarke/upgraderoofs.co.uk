@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { LocalAreaContent } from '@/components/LocalAreaContent';
 import { LeadFormWizard } from '@/components/LeadFormWizard';
 import { trackQuoteRequest, trackPhoneClick, getGclid } from '@/lib/tracking';
+import { usePhoneNumber } from '@/lib/phone-number';
 import { SectionHeader } from '@/components/SectionHeader';
 import { HeroKicker } from '@/components/HeroKicker';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
@@ -21,6 +22,8 @@ import { TrustBadgeGrid, ServiceAreaHub } from '@/components/SpecialOfferSection
 import { orderAreaLinks } from '@/lib/service-areas';
 
 export default function OfferSandbachPage() {
+  // Swapped for a Google Ads forwarding number on ad traffic. See lib/phone-number.
+  const phone = usePhoneNumber();
   const [mounted, setMounted] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
@@ -119,7 +122,7 @@ export default function OfferSandbachPage() {
             <div className="bg-white p-8 border border-gray-200 border-l-4 border-l-brand-navy">
               <div className="text-center mb-8">
                 <a
-                  href="tel:01270897606"
+                  href={phone.tel}
                   onClick={handlePhoneClick}
                   className="block w-full border-2 border-brand-navy p-5 mb-6 text-center hover:border-brand-orange transition-colors"
                 >
@@ -127,7 +130,7 @@ export default function OfferSandbachPage() {
                     Call us direct
                   </span>
                   <span className="block mt-1 text-2xl font-bold text-brand-navy">
-                    01270 897 606
+                    {phone.display}
                   </span>
                   <span className="block mt-1 text-sm text-gray-600">
                     We answer straight away

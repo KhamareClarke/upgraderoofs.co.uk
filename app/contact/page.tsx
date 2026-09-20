@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { BreadcrumbSchema } from '@/components/BreadcrumbSchema';
 import { Mail, Phone, MapPin, Clock } from 'lucide-react';
 import { ContactForm } from '@/components/ContactForm';
-import { TrackedPhoneLink } from '@/components/TrackedPhoneLink';
+import { TrackedPhoneLink, PhoneNumberText } from '@/components/TrackedPhoneLink';
 import { TrackedEmailLink } from '@/components/TrackedEmailLink';
 import { SectionHeader } from '@/components/SectionHeader';
 import { HeroKicker } from '@/components/HeroKicker';
@@ -96,9 +96,7 @@ export default function ContactPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="font-semibold text-sm sm:text-base text-brand-navy mb-1 sm:mb-2">Phone</h4>
-                      <TrackedPhoneLink href="tel:01270897606" placement="contact_info_landline" className="text-sm sm:text-base text-gray-600 hover:text-brand-orange block break-all sm:break-normal">
-                        01270 897 606
-                      </TrackedPhoneLink>
+                      <TrackedPhoneLink placement="contact_info_landline" className="text-sm sm:text-base text-gray-600 hover:text-brand-orange block break-all sm:break-normal" />
                                           </div>
                   </div>
 
@@ -257,9 +255,9 @@ export default function ContactPage() {
             <p className="text-sm sm:text-base md:text-lg text-white/90 mb-4 sm:mb-6 max-w-2xl mx-auto px-2">
               Storm damage? Leak? We offer 24/7 emergency roofing services across Cheshire. Our emergency team can be with you within hours to secure your property and prevent further damage. Don't wait - water damage can quickly escalate and cause structural issues.
             </p>
-            <TrackedPhoneLink href="tel:01270897606" placement="contact_emergency_cta" className="inline-block w-full sm:w-auto">
+            <TrackedPhoneLink placement="contact_emergency_cta" className="inline-block w-full sm:w-auto">
               <button className="bg-brand-orange hover:bg-brand-orange/90 !text-white font-bold px-6 sm:px-8 md:px-10 h-12 sm:h-14 text-base sm:text-lg rounded-md transition-colors w-full sm:w-auto">
-                <span className="hidden sm:inline">Call Now: </span>01270 897 606
+                <span className="hidden sm:inline">Call Now: </span><PhoneNumberText />
               </button>
             </TrackedPhoneLink>
             <div className="mt-3"><CtaSubMessage dark /></div>

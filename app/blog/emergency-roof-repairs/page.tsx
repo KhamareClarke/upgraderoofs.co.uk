@@ -45,10 +45,12 @@ export default function EmergencyRoofRepairsPost() {
               and when to call professional help. Available 24/7 across Cheshire.
             </p>
             <div className="flex flex-col items-start gap-2">
-              <TrackedPhoneLink href="tel:01270897606" placement="blog_emergency_hero" className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-lg font-semibold hover:bg-brand-orange/90 transition-colors">
-                <Phone className="w-5 h-5" />
-                Call Now: 01270 897606
-              </TrackedPhoneLink>
+              <TrackedPhoneLink
+                placement="blog_emergency_hero"
+                icon={<Phone className="w-5 h-5" />}
+                prefix="Call Now: "
+                className="inline-flex items-center gap-2 bg-brand-orange text-white px-6 py-3 rounded-lg font-semibold hover:bg-brand-orange/90 transition-colors"
+              />
               <CtaSubMessage dark />
             </div>
           </div>
@@ -184,10 +186,11 @@ export default function EmergencyRoofRepairsPost() {
                   to respond to roofing emergencies across Cheshire, day or night.
                 </p>
                 <div className="flex flex-col items-center gap-2">
-                  <TrackedPhoneLink href="tel:01270897606" placement="blog_emergency_cta" className="inline-flex items-center justify-center gap-2 bg-brand-orange hover:bg-brand-orange/90 text-white px-6 py-3 rounded-lg font-semibold transition-colors">
-                    <Phone className="w-5 h-5" />
-                    01270 897606
-                  </TrackedPhoneLink>
+                  <TrackedPhoneLink
+                    placement="blog_emergency_cta"
+                    icon={<Phone className="w-5 h-5" />}
+                    className="inline-flex items-center justify-center gap-2 bg-brand-orange hover:bg-brand-orange/90 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+                  />
                   <CtaSubMessage dark />
                 </div>
               </div>

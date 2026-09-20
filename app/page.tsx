@@ -98,7 +98,6 @@ export default function Home() {
             </div>
             <div className="text-center mt-10">
               <TrackedPhoneLink
-                href="tel:01270897606"
                 placement="trust_badges"
                 className="inline-flex items-center justify-center gap-2.5 px-6 sm:px-8 py-3 bg-brand-orange hover:bg-brand-orange/90 text-white font-semibold rounded-lg transition-colors text-sm sm:text-base"
               >

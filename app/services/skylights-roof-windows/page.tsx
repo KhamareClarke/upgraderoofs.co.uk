@@ -199,12 +199,10 @@ export default function SkylightsRoofWindowsPage() {
             </div>
             <div className="mt-8 text-center">
               <TrackedPhoneLink
-                href="tel:01270897606"
                 placement="faq_section"
+                prefix="Still have questions? Call Us: "
                 className="inline-flex items-center justify-center px-6 py-2.5 bg-brand-orange hover:bg-brand-orange/90 text-white font-semibold rounded-lg transition-colors text-sm"
-              >
-                Still have questions? Call Us: 01270 897 606
-              </TrackedPhoneLink>
+              />
               <CtaSubMessage className="mt-3" />
             </div>
           </div>

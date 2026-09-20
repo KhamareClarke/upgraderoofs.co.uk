@@ -3,11 +3,14 @@
 import { PhoneCall, Mail } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { trackPhoneClick, trackWhatsAppClick } from '@/lib/tracking';
+import { usePhoneNumber } from '@/lib/phone-number';
 import { QuoteForm } from '@/components/QuoteForm';
 import { CtaSubMessage } from '@/components/CtaSubMessage';
 
 export function MobileContactBar() {
   const pathname = usePathname();
+  // Swapped for a Google Ads forwarding number on ad traffic. See lib/phone-number.
+  const phone = usePhoneNumber();
 
   // Per-page tracking identity, derived from the route so every page shares this
   // single bottom bar rather than rendering its own copy.
@@ -22,7 +25,7 @@ export function MobileContactBar() {
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-gray-200 shadow-lg md:hidden">
       <div className="flex items-center justify-around py-3 px-4">
         <a
-          href="tel:01270897606"
+          href={phone.tel}
           className="flex flex-col items-center gap-1 text-brand-navy hover:text-brand-orange transition-colors group"
           aria-label="Call us"
           onClick={() => trackPhoneClick(placement)}

@@ -70,10 +70,11 @@ export default function EmergencyRoofingPage() {
             </p>
             <div className="flex flex-col items-center sm:items-start gap-2">
               <Button size="lg" className="bg-brand-orange hover:bg-brand-orange/90 !text-white font-bold px-8 h-14 animate-pulse" asChild>
-                <TrackedPhoneLink href="tel:01270897606" placement="emergency_hero_mobile">
-                  <Phone className="w-5 h-5 mr-2" />
-                  Call: 01270 897 606
-                </TrackedPhoneLink>
+                <TrackedPhoneLink
+                  placement="emergency_hero_mobile"
+                  icon={<Phone className="w-5 h-5 mr-2" />}
+                  prefix="Call: "
+                />
               </Button>
               <CtaSubMessage dark />
             </div>
@@ -174,10 +175,11 @@ export default function EmergencyRoofingPage() {
               </p>
               <div className="space-y-4">
                 <Button size="lg" className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold h-14 animate-pulse" asChild>
-                  <TrackedPhoneLink href="tel:01270897606" placement="emergency_callout_mobile">
-                    <Phone className="w-5 h-5 mr-2" />
-                    Call: 01270 897 606
-                  </TrackedPhoneLink>
+                  <TrackedPhoneLink
+                    placement="emergency_callout_mobile"
+                    icon={<Phone className="w-5 h-5 mr-2" />}
+                    prefix="Call: "
+                  />
                 </Button>
               </div>
               <div className="mt-6">
@@ -272,10 +274,11 @@ export default function EmergencyRoofingPage() {
             subtitle="Don't wait · call us now for immediate assistance in Sandbach and across Cheshire"
           />
           <Button size="lg" className="bg-brand-orange hover:bg-brand-orange/90 !text-white font-bold px-10 h-14 text-lg animate-pulse" asChild>
-            <TrackedPhoneLink href="tel:01270897606" placement="emergency_bottom_cta">
-              <Phone className="w-5 h-5 mr-2" />
-              Call Now: 01270 897 606
-            </TrackedPhoneLink>
+            <TrackedPhoneLink
+              placement="emergency_bottom_cta"
+              icon={<Phone className="w-5 h-5 mr-2" />}
+              prefix="Call Now: "
+            />
           </Button>
           <CtaSubMessage dark className="mt-3" />
         </div>

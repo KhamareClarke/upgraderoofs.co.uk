@@ -1,5 +1,5 @@
 import { ChevronDown } from 'lucide-react';
-import { PHONE_DISPLAY, PHONE_TEL } from '@/lib/contact';
+import { TrackedPhoneLink } from '@/components/TrackedPhoneLink';
 
 interface PostcodeCoverageProps {
   town: string;
@@ -97,9 +97,10 @@ export function PostcodeCoverage({ town, postcode, areas }: PostcodeCoverageProp
 
               <p className="mt-3 text-sm text-gray-500">
                 Not sure whether your postcode is covered? Call{' '}
-                <a href={PHONE_TEL} className="font-semibold text-brand-orange hover:underline">
-                  {PHONE_DISPLAY}
-                </a>{' '}
+                <TrackedPhoneLink
+                  placement="postcode_coverage"
+                  className="font-semibold text-brand-orange hover:underline"
+                />{' '}
                 and we&rsquo;ll confirm.
               </p>
             </div>
