@@ -76,13 +76,24 @@ import type {
 /**
  * Auto-refresh cadence.
  *
- * Stays at a minute because the lead figures come from Supabase and cost nothing
- * to re-read — this is a lead dashboard, and a lead that arrived a minute ago
- * should appear within a minute. What needed slowing down was the GOOGLE side,
- * not the page: see `PANEL_TTL_MS` in lib/dashboard-data.ts, which bounds the
- * Ads/GA4/listing reads by time so polling faster cannot spend more quota.
+ * Five minutes, down from one. The instruction was "a few times an hour", on the
+ * reasoning that re-reading a stored snapshot faster than it changes is pointless
+ * — true of the Ads and GA4 panels, which now come from `google_panel_snapshots`
+ * and change at most every three hours.
+ *
+ * It is not quite true of the headline. The LEAD figures are read from Supabase
+ * on every request and cost nothing, so a form submission really does appear
+ * within one tick, and the longer the tick the longer a new lead stays invisible
+ * on a lead dashboard. Five minutes is the compromise: twelve polls an hour
+ * instead of sixty, with a new lead arriving well inside the time it takes to
+ * notice. Polling cannot spend Google quota at any cadence now — that is the
+ * claim in lib/google-panel-sync.ts, not a property of this number — so raising
+ * it back to a minute is a one-line change if the wait ever grates.
+ *
+ * The `visibilitychange` listener below still refreshes the moment the app is
+ * brought back to the foreground, so opening the dashboard is never stale.
  */
-const REFRESH_MS = 60_000;
+const REFRESH_MS = 5 * 60_000;
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
 
@@ -802,9 +813,9 @@ function ContextSection({ data }: { data: DashboardData }) {
 
       {data.googleAsOf && (
         <Hint>
-          Ads, listing and GA4 figures last read at {clockTime(data.googleAsOf)}; the lead figures
-          above are re-read every minute. Google revises all three for days after the fact, so
-          these are deliberately not chased minute by minute.
+          Ads and GA4 figures were last read from Google at {clockTime(data.googleAsOf)} and are
+          served from storage; the lead figures above are re-read every five minutes. Google
+          revises both for days after the fact, so they are not chased any faster than this.
         </Hint>
       )}
     </section>
@@ -1012,9 +1023,9 @@ export function DashboardClient({ slug }: { slug: string }) {
             <ActivitySection events={data.feed} />
             <InstallHint />
             <p className="border-t border-gray-100 px-5 py-3 text-[10px] leading-relaxed text-gray-400">
-              Lead figures refresh every minute. Ads, listing and GA4 figures are re-read every 15
-              minutes — Google revises all three for days, so they are not chased faster than that.
-              Read-only.
+              Lead figures refresh every five minutes. Ads and GA4 figures are read from Google at
+              most every three hours and served from storage between times, so no number of visits
+              can use more of the Ads API allowance.
             </p>
           </>
         )}

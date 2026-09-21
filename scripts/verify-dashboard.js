@@ -38,6 +38,13 @@
  *      checked as an arithmetic identity, each tap component is checked against
  *      the panel that reports it, and the listing component is re-derived from
  *      the stored series over the lead windows rather than the panel's own.
+ *   6. THE QUOTA BOUND. The one property that cannot be seen in a single response
+ *      and cannot be fixed by looking at the code: that a page load SPENDS
+ *      NOTHING. Asserted by making three loads and requiring them to report the
+ *      same Google observation time while reporting different `generatedAt` — two
+ *      figures agreeing across calls that were demonstrably re-executed. A live
+ *      read would move that timestamp, and a cached response would freeze
+ *      `generatedAt`, so neither can pass by accident.
  *
  * Plain .js talking to PostgREST directly, matching the scripts/audit-*.js
  * convention: a .ts script importing lib/*.ts dies at the `@/` alias, and tsx is
@@ -668,9 +675,141 @@ async function main() {
   section('9. Layout — every lead figure appears once');
 
   verifyNoDoubleCounting(api);
-  await verifyServedLayout(rightPage, api);
+
+  // Fetched once and handed to both sections that read it: section 9 for the
+  // rendered layout, section 10 for the refresh copy.
+  const chunkJs = await dashboardChunkJs(rightPage);
+  if (chunkJs) verifyServedLayout(chunkJs, api);
+
+  // ── 10. Stored snapshots and the quota bound ───────────────────────────────
+  section('10. The Google panels come from storage, not from Google');
+
+  await verifyStoredSnapshots(chunkJs);
 
   report();
+}
+
+/**
+ * Section 10 — the quota bound, and the copy that describes it.
+ *
+ * ── The one check that cannot be satisfied by accident ───────────────────────
+ *
+ * Everything else in this file inspects a single response. The property that
+ * actually protects the Ads developer token is a property of the SEQUENCE: that
+ * loading the page again does not read Google again. So three loads are made and
+ * held against each other, requiring
+ *
+ *   generatedAt  to DIFFER — the payload really was rebuilt, so nothing above is
+ *                 an artefact of a cached HTTP response;
+ *   googleAsOf   to MATCH  — and therefore not one of those three rebuilds read
+ *                 Google, or it would carry the time of its own read.
+ *
+ * Both halves are needed. Agreement alone passes if the response is cached, and
+ * difference alone passes if the figures are live. Three reads rather than two
+ * because the first may legitimately refresh a snapshot that has gone stale, and
+ * a just-refreshed `googleAsOf` is close enough to `generatedAt` to make the
+ * second assertion meaningless; by reads 2 and 3 any refresh has settled.
+ *
+ * ── The unauthenticated cron call ────────────────────────────────────────────
+ *
+ * `/api/cron/google-sync` writes with the service-role key, so a 401 is the only
+ * thing standing between it and an anonymous caller. Its sibling
+ * `/api/gbp/sync` is not re-checked here: the guard is one shared function, and
+ * the assertion that matters — that the NEW route reaches it — is this one.
+ */
+async function verifyStoredSnapshots(js) {
+  const load = async () => {
+    const res = await get(`/api/dashboard/${SLUG}`);
+    if (res.status !== 200) throw new Error(`HTTP ${res.status}`);
+    return JSON.parse(res.text);
+  };
+
+  let reads;
+  try {
+    reads = [await load()];
+    for (let i = 0; i < 2; i += 1) {
+      await new Promise((r) => setTimeout(r, 1200));
+      reads.push(await load());
+    }
+  } catch (err) {
+    fail(
+      'the API can be read three times for a sequence check',
+      err instanceof Error ? err.message : String(err),
+    );
+    return;
+  }
+  const [, second, third] = reads;
+
+  if (second.generatedAt !== third.generatedAt) {
+    pass('the payload is rebuilt on every request', `${second.generatedAt} → ${third.generatedAt}`);
+  } else {
+    fail(
+      'the payload is rebuilt on every request',
+      `generatedAt was ${third.generatedAt} on both — a cached response would make the check below meaningless`,
+    );
+  }
+
+  if (typeof second.googleAsOf === 'string' && second.googleAsOf) {
+    pass('the payload reports when the Google figures were read', second.googleAsOf);
+  } else {
+    fail('the payload reports when the Google figures were read', `was ${second.googleAsOf}`);
+  }
+
+  if (second.googleAsOf && second.googleAsOf === third.googleAsOf) {
+    pass('two page loads seconds apart report the same Google read time');
+  } else {
+    fail(
+      'two page loads seconds apart report the same Google read time',
+      `${second.googleAsOf} then ${third.googleAsOf} — a page load is reading Google`,
+    );
+  }
+
+  // The stored time is an OBSERVATION time, hours behind the payload it rides in.
+  // Equality here would mean the figures were fetched to build this response.
+  if (second.googleAsOf && second.googleAsOf !== third.generatedAt) {
+    pass('the Google read time is not the payload build time');
+  } else {
+    fail(
+      'the Google read time is not the payload build time',
+      'googleAsOf equals generatedAt, so the read happened while the payload was assembled',
+    );
+  }
+
+  // The fail-closed note must not be what is rendering. If it is, the table is
+  // missing (or unreadable) and every figure below it is absent — a state that
+  // otherwise looks like "a quiet month".
+  const NOTE_MARKER = 'No stored Google figures are available';
+  for (const [name, panel] of [['Ads', third.ads], ['GA4', third.clicks]]) {
+    const note = String((panel && panel.note) || '');
+    assertEqual(`the ${name} panel is not showing the missing-store notice`, note.includes(NOTE_MARKER), false);
+  }
+  assertEqual('the payload reports no missing store', third.storeNote, null);
+
+  // The cron route must refuse an anonymous caller. No caveat about which
+  // credential is missing, and nothing from the request echoed back.
+  const cron = await get('/api/cron/google-sync');
+  assertEqual('the sync cron refuses an unauthenticated call', cron.status, 401);
+  assertEqual(
+    'the cron refusal names no credential and echoes no header',
+    /CRON_SECRET|Bearer|Authorization/i.test(cron.text),
+    false,
+  );
+
+  // The copy and the code have to agree, and only the copy is checkable from
+  // outside: minification preserves string literals but not numeric ones, so a
+  // pinned sentence is the only way to notice that the refresh cadence was
+  // changed in the code and not in what the page tells the reader. This phrase is
+  // the load-bearing half of the footer — it is the sentence that claims page
+  // loads cost nothing.
+  if (!js) {
+    fail('the footer states where the Google figures come from', 'the route chunk could not be read');
+    return;
+  }
+  assertEqual(
+    'the footer states where the Google figures come from',
+    js.includes('served from storage between times'),
+    true,
+  );
 }
 
 /**
@@ -746,6 +885,50 @@ function verifyNoDoubleCounting(api) {
 }
 
 /**
+ * The JavaScript of the dashboard's own route chunks, or null if it cannot be
+ * found — in which case a failure is already recorded, naming which.
+ *
+ * Worth its own function because two sections need the same bytes: section 9
+ * reads the rendered layout out of them, and section 10 pins the refresh copy.
+ * Fetching twice would double the failure messages for one missing chunk.
+ *
+ * The page is client-rendered, so the served document is a skeleton: no figure,
+ * no label, no copy. What it does carry is the RSC flight payload, which names
+ * the route's client chunks as escaped JSON strings — `\/` for every `/`. So the
+ * escapes are stripped before matching, and the chunks are re-fetched from
+ * `/_next/`. A path with `[slug]` in it must be percent-encoded or it 404s,
+ * which would otherwise look like the chunk is missing.
+ */
+async function dashboardChunkJs(page) {
+  const unescaped = page.text.replace(/\\/g, '');
+  const chunks = [
+    ...new Set(
+      [...unescaped.matchAll(/static\/chunks\/[\w./%[\]-]+?\.js/g)].map((m) => m[0]),
+    ),
+  ].filter((c) => c.includes('/app/dashboard/'));
+
+  if (chunks.length === 0) {
+    fail(
+      'the dashboard route chunk is findable in the served page',
+      'no /app/dashboard/ chunk named in the flight payload — the layout checks below cannot run',
+    );
+    return null;
+  }
+
+  const bodies = [];
+  for (const chunk of chunks) {
+    const path = `/_next/${chunk}`.replace(/\[/g, '%5B').replace(/\]/g, '%5D');
+    const res = await get(path);
+    if (res.status !== 200) {
+      fail('the dashboard route chunk is served', `${chunk} → HTTP ${res.status}`);
+      return null;
+    }
+    bodies.push(res.text);
+  }
+  return bodies.join('\n');
+}
+
+/**
  * The layout half: what the browser is actually told to draw.
  *
  * The page is client-rendered, so the strings live in the route's JS chunk, not
@@ -759,34 +942,10 @@ function verifyNoDoubleCounting(api) {
  *   3. `[slug]` must be percent-encoded or the request 404s — and a 404 body
  *      contains none of the needles, so it reads as "the old layout shipped"
  *      rather than "I could not find the file".
+ *
+ * `js` is the joined chunk source, fetched by `dashboardChunkJs` above.
  */
-async function verifyServedLayout(page, api) {
-  const unescaped = page.text.replace(/\\/g, '');
-  const chunks = [
-    ...new Set(
-      [...unescaped.matchAll(/static\/chunks\/[\w./%[\]-]+?\.js/g)].map((m) => m[0]),
-    ),
-  ].filter((c) => c.includes('/app/dashboard/'));
-
-  if (chunks.length === 0) {
-    fail(
-      'the dashboard route chunk is findable in the served page',
-      'no /app/dashboard/ chunk named in the flight payload — the layout checks below cannot run',
-    );
-    return;
-  }
-
-  const bodies = [];
-  for (const chunk of chunks) {
-    const path = `/_next/${chunk}`.replace(/\[/g, '%5B').replace(/\]/g, '%5D');
-    const res = await get(path);
-    if (res.status !== 200) {
-      fail('the dashboard route chunk is served', `${chunk} → HTTP ${res.status}`);
-      return;
-    }
-    bodies.push(res.text);
-  }
-  const js = bodies.join('\n');
+async function verifyServedLayout(js, api) {
 
   // The five rows of the single breakdown, each present exactly once as a label.
   const ROW_LABELS = [
@@ -836,9 +995,9 @@ async function verifyServedLayout(page, api) {
     );
   }
 
-  // Google figures are cached for 15 minutes; the lead figures are not. If the
-  // cache is ever removed, the Ads quota comes back — so the constant shipping in
-  // the bundle is worth pinning.
+  // Google figures are served from `google_panel_snapshots` and the lead figures
+  // are not, which is the distinction that keeps the Ads quota safe — so the
+  // observation time has to be on the payload for the card to be able to say so.
   assertEqual(
     'the served payload reports when the Google panels were last read',
     typeof api.googleAsOf === 'string' && api.googleAsOf.length > 0,

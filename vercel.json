@@ -6,7 +6,7 @@
       "schedule": "0 8 * * *"
     },
     {
-      "path": "/api/gbp/sync",
+      "path": "/api/cron/google-sync",
       "schedule": "23 6 * * *"
     }
   ]

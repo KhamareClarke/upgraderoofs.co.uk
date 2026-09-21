@@ -5,6 +5,19 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 import { GBP_LOCATION_ID } from '@/lib/contact';
 import { selectMetrics, toIsoDate, type StoredMetricRow } from '@/lib/gbp-performance';
+import {
+  claimSnapshot,
+  isMissingTableError,
+  PANEL_SOURCES,
+  readLatestSnapshot,
+  SNAPSHOT_TABLE,
+  SNAPSHOT_TTL_MS,
+  writeSnapshot,
+  writeSnapshotError,
+  type PanelSource,
+  type Snapshot,
+  type SnapshotWindow,
+} from '@/lib/google-panel-sync';
 
 /**
  * lib/dashboard-data.ts
@@ -1089,7 +1102,13 @@ function adsFiguresNote(
   return notes.length ? notes.join(' ') : null;
 }
 
-async function readAdsPanel(now: Date): Promise<AdsPanel> {
+/**
+ * Exported for `syncGooglePanels`, which is the only other caller. Not a general
+ * entry point: it spends Google quota on every call, so nothing that renders
+ * should reach for it — the dashboard goes through `panelFromStore`, which reads
+ * storage unless it wins the claim first.
+ */
+export async function readAdsPanel(now: Date): Promise<AdsPanel> {
   const windows = leadWindows(now);
   const base: AdsPanel = {
     available: false,
@@ -1478,7 +1497,8 @@ async function ga4ClickCounts(
   return out;
 }
 
-async function readClicksPanel(now: Date): Promise<ClicksPanel> {
+/** Exported for `syncGooglePanels` only — see the note on `readAdsPanel`. */
+export async function readClicksPanel(now: Date): Promise<ClicksPanel> {
   // Same windows as the lead panel, on purpose: "3 calls tapped and 5 forms
   // filled" is only a comparison if the two cover the same days. GBP uses its own
   // settled window because Google revises listing data for a week or more; GA4
@@ -1586,6 +1606,15 @@ interface LeadTapSet {
  * The GA4 and Ads components are NOT re-fetched: those two panels already read
  * the lead windows, so their figures are reused as-is. Only GBP needs its own
  * read, and one range covers all three windows.
+ *
+ * ── Why a stale window counts as missing ─────────────────────────────────────
+ *
+ * The Ads and GA4 panels now come from storage, so one of them can be perfectly
+ * readable and still wrong to add up: a snapshot captured for an earlier window
+ * is a count over different dates. That is treated exactly like a failed read
+ * rather than as a slightly older figure, because summing it produces a total
+ * that looks like a measurement and is not one — the failure this whole file is
+ * written against, and the reason `callsError` exists rather than `calls: 0`.
  */
 async function readLeadTaps(
   store: SupabaseClient,
@@ -1596,8 +1625,20 @@ async function readLeadTaps(
 ): Promise<LeadTapSet> {
   const missing: string[] = [];
 
-  const ga4 = clicks.available ? clicks : null;
-  if (!ga4) missing.push('site call and WhatsApp taps (GA4)');
+  // A stored panel can be perfectly readable and still unusable here: if it was
+  // captured for an earlier window, its figures are a count over different dates.
+  // Checking `current` is enough to rule that out, because both panels derive all
+  // three of their windows from the same `leadWindows(now)` — one matching means
+  // all three match.
+  const ga4Fresh = clicks.available && coversWindow(clicks.current, windows.current);
+  const ga4 = ga4Fresh ? clicks : null;
+  if (!ga4) {
+    missing.push(
+      clicks.available
+        ? 'site call and WhatsApp taps (GA4 — the stored figures are for an earlier window)'
+        : 'site call and WhatsApp taps (GA4)',
+    );
+  }
 
   // Two different failures put a zero in the Ads component of the total: the
   // whole panel not loading (a quota or a credential error) and the panel
@@ -1606,8 +1647,14 @@ async function readLeadTaps(
   // The GA4 branch above only ever has the first case, which is why it can test
   // the panel alone; here testing `adsTaps` covers both, because it is null
   // exactly when either has happened.
-  const adsTaps = ads.available ? ads.taps : null;
-  if (!adsTaps) missing.push('Google Ads tap conversions');
+  const adsTaps = ads.available && coversWindow(ads.current, windows.current) ? ads.taps : null;
+  if (!adsTaps) {
+    missing.push(
+      ads.available
+        ? 'Google Ads tap conversions (the stored figures are for an earlier window)'
+        : 'Google Ads tap conversions',
+    );
+  }
   // The tap spec always asks for this window, so a null here means the read was
   // skipped rather than that the figure is genuinely unknown. Zeroing it would
   // quietly shrink the third line, so name it instead.
@@ -1682,61 +1729,196 @@ export interface DashboardData {
   feed: FeedEvent[];
   gbp: GbpPanel;
   ads: AdsPanel;
-  /** GA4 call/WhatsApp/email taps. Independent of Supabase — it reads Google. */
+  /** GA4 call/WhatsApp/email taps, served from the stored snapshot. */
   clicks: ClicksPanel;
   /** Set when the durable store is missing — every figure below is then absent. */
   storeNote: string | null;
   /**
-   * When the Ads, GA4 and listing figures were actually read — which is NOT
-   * `generatedAt` once the snapshot below is being served from cache. Null when
-   * the store is missing and those reads were skipped.
+   * When the Ads and GA4 figures were actually READ FROM GOOGLE — which is not
+   * `generatedAt`, because they come from `google_panel_snapshots` rather than
+   * from a call made while assembling this payload. It is the older of the two
+   * panels' `captured_at`, so it is never later than either figure. Null when the
+   * store is missing, or when no snapshot has been captured yet.
    */
   googleAsOf: string | null;
 }
 
 /**
- * How long a read of the Ads/GA4/listing panels is reused.
+ * How the Ads and GA4 panels reach the page.
  *
- * The dashboard polls every sixty seconds, and one poll costs eleven Google Ads
- * GAQL queries: two account totals, two conversion-action candidate lookups and
- * seven per-window counts. That is 15,840 queries a day for a single tab left
- * open — against a developer token on EXPLORER access, whose ceiling is 2,880
- * operations per twenty-four hours. So one open tab exhausted the entire token's
- * daily quota in about four hours and every Ads read afterwards failed with
- * `RESOURCE_EXHAUSTED` until the window slid forward, which is exactly what the
- * dashboard was showing as "0 Ads taps" with nothing to say for itself.
+ * ── What used to be here ────────────────────────────────────────────────────
  *
- * Caching the panels bounds the cost by TIME rather than by how many tabs are
- * open or how often someone taps Refresh, which raising the poll interval alone
- * would not: five-minute polling is still 3,168 queries a day. The lead figures
- * keep refreshing every minute, because those come from Supabase and cost
- * nothing in quota — and the panels being cached are the ones that lag anyway
- * (Google Ads revises conversions for days, GA4 for a day or two, and the
- * listing data settles five days behind).
+ * An in-process, module-scoped cache with a fifteen-minute TTL. It did bound the
+ * sixty-second poll, but only per WARM SERVERLESS INSTANCE: it did not survive a
+ * cold start and was not shared between instances, so the real spend was the
+ * cache's size multiplied by however many instances the traffic happened to
+ * produce. One uncached read costs eleven Ads GAQL queries (two account totals,
+ * two conversion-action candidate lookups, seven per-window counts), against a
+ * developer token on EXPLORER access whose ceiling is 2,880 operations per
+ * sliding twenty-four hours. That is how the token ran out — and how the Ads
+ * panel, and a component of the lead total, went to zero with nothing to say for
+ * itself.
+ *
+ * ── What replaces it ────────────────────────────────────────────────────────
+ *
+ * `google_panel_snapshots` (supabase/migrations/20260921120000_…), written by
+ * `syncGooglePanels` below and read here. The row is both the store and the
+ * lock, so the cost is bounded by TIME in a way no number of page loads, tabs or
+ * cold starts can raise: at most one refresh per source per SNAPSHOT_TTL_MS,
+ * plus one when the rolling window turns over and the row for the new window is
+ * first created.
+ *
+ * Ten runs a day at eleven Ads operations each is 110 of 2,880 — about 3.8% —
+ * with GA4 at thirty requests and under three hundred tokens against 200,000.
+ * Page loads cost ZERO Google calls, always, which is the property the
+ * in-process cache could not offer.
+ *
+ * The GBP panel is deliberately NOT snapshotted. `readGbpPanel` already reads
+ * nothing but `gbp_daily_metrics`, which its own daily sync keeps current, so it
+ * spends no quota and would gain nothing from a second copy.
  */
-const PANEL_TTL_MS = 15 * 60_000;
-
-/**
- * The last read of the three panels below the headline.
- *
- * Keyed by the current window's dates so a rollover past midnight cannot serve
- * yesterday's windows, and module-scoped so a warm serverless instance reuses it
- * across requests. A cold instance simply reads again — the cache is a bound,
- * not a dependency, and every figure in it is still re-read at least this often.
- */
-let panelCache: {
-  key: string;
-  at: number;
-  gbp: GbpPanel;
-  ads: AdsPanel;
-  clicks: ClicksPanel;
-} | null = null;
 
 interface PanelSnapshot {
   gbp: GbpPanel;
   ads: AdsPanel;
   clicks: ClicksPanel;
-  asOf: string;
+  /** Oldest `captured_at` of the two stored panels, or null when neither exists. */
+  asOf: string | null;
+}
+
+function blankAdsPanel(windows: LeadWindows, note: string): AdsPanel {
+  return {
+    available: false,
+    note,
+    current: windows.current,
+    previous: windows.previous,
+    currentTotals: { ...ZERO_ADS },
+    previousTotals: { ...ZERO_ADS },
+    calls: null,
+    callsError: null,
+    leadForm: null,
+    leadFormError: null,
+    taps: null,
+    tapsError: null,
+  };
+}
+
+function blankClicksPanel(windows: LeadWindows, note: string): ClicksPanel {
+  return {
+    available: false,
+    note,
+    current: windows.current,
+    previous: windows.previous,
+    currentTotals: { ...ZERO_CLICKS },
+    previousTotals: { ...ZERO_CLICKS },
+    previousFull: windows.previousFull,
+    previousFullTotals: { ...ZERO_CLICKS },
+  };
+}
+
+/**
+ * Shown when there is no stored snapshot to serve.
+ *
+ * It names the migration rather than an error, because on a deployment that
+ * shipped before the table was created this is not a fault — it is the
+ * fail-closed path working. The same convention `app/api/gbp/performance`
+ * already uses for its own missing tables.
+ *
+ * The last sentence is the load-bearing one. Falling back to a live Google read
+ * when storage is empty would make the whole guarantee conditional, and "storage
+ * happens to be empty" is exactly the state a quota-exhausted token produces.
+ */
+const SNAPSHOT_UNAVAILABLE_NOTE =
+  'No stored Google figures are available — ' +
+  `${SNAPSHOT_TABLE} could not be read. Apply ` +
+  'supabase/migrations/20260921120000_create_google_panel_snapshots.sql and run the ' +
+  'scheduled sync. The dashboard does not fall back to reading Google directly: a live ' +
+  'read on every page load is what exhausted the Ads quota.';
+
+/** True when a stored panel covers exactly the window the card is about to draw. */
+function coversWindow(covered: ComparisonWindow, wanted: ComparisonWindow): boolean {
+  return covered.from === wanted.from && covered.to === wanted.to;
+}
+
+/**
+ * Serve one panel from storage, refreshing it only if this request wins the claim.
+ *
+ * The order below is the whole cost guarantee, so it is worth reading as a
+ * sequence:
+ *
+ *   1. A snapshot that covers the wanted window and is inside the TTL is served
+ *      as-is. No claim is attempted, so no Google call can happen. This is the
+ *      path almost every page load takes.
+ *   2. Otherwise try to claim. Losing the claim is normal and harmless — someone
+ *      else is refreshing — and costs nothing.
+ *   3. Having won, read Google and store the result. A failure is recorded
+ *      against the row and the row's `claimed_at` still holds the TTL, so a
+ *      broken credential cannot become one retry per page load.
+ *   4. Whatever happened, serve something: the fresh read, or the newest stored
+ *      row even if it covers an older window, labelled so the reader knows.
+ */
+async function panelFromStore<T extends {
+  available: boolean;
+  note: string | null;
+  current: ComparisonWindow;
+}>(
+  store: SupabaseClient,
+  source: PanelSource,
+  windows: LeadWindows,
+  now: Date,
+  read: () => Promise<T>,
+  blank: (note: string) => T,
+  staleNote: (covered: SnapshotWindow) => string,
+): Promise<{ panel: T; capturedAt: string | null }> {
+  let stored: Snapshot<T> | null = null;
+  try {
+    stored = await readLatestSnapshot<T>(store, source);
+  } catch (err) {
+    console.error(
+      `[dashboard] ${source} snapshot read failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { panel: blank(SNAPSHOT_UNAVAILABLE_NOTE), capturedAt: null };
+  }
+
+  const wanted = coversWindow(stored?.window ?? { from: '', to: '' }, windows.current);
+
+  if (stored && wanted) {
+    const age = now.getTime() - Date.parse(stored.capturedAt);
+    // A snapshot with an unparseable timestamp fails this test and is refreshed,
+    // which is the safe direction: it can only cost one extra read, never serve
+    // a figure of unknown age as if it were current.
+    if (Number.isFinite(age) && age < SNAPSHOT_TTL_MS) {
+      return { panel: stored.payload, capturedAt: stored.capturedAt };
+    }
+  }
+
+  try {
+    if (await claimSnapshot(store, source, windows.current, now)) {
+      const fresh = await read();
+      await writeSnapshot(store, source, windows.current, fresh, now);
+      return { panel: fresh, capturedAt: now.toISOString() };
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[dashboard] ${source} refresh failed: ${message}`);
+    try {
+      await writeSnapshotError(store, source, windows.current, message);
+    } catch {
+      // Recording the failure must not itself become the failure. The claim
+      // already holds the TTL, so nothing is lost by dropping this.
+    }
+  }
+
+  if (!stored) return { panel: blank(SNAPSHOT_UNAVAILABLE_NOTE), capturedAt: null };
+
+  // Someone else holds the claim, or our own refresh just failed. Serve the
+  // newest stored row. When it covers a different window the note says so — and
+  // `readLeadTaps` will exclude it from the total, because a count from another
+  // date range cannot be added to today's form leads.
+  const panel = wanted
+    ? stored.payload
+    : { ...stored.payload, note: [stored.payload.note, staleNote(stored.window)].filter(Boolean).join(' ') };
+  return { panel, capturedAt: stored.capturedAt };
 }
 
 async function readPanelSnapshot(
@@ -1744,19 +1926,142 @@ async function readPanelSnapshot(
   now: Date,
   windows: LeadWindows,
 ): Promise<PanelSnapshot> {
-  const key = `${windows.current.from}..${windows.current.to}`;
-  const hit = panelCache;
-  if (hit && hit.key === key && now.getTime() - hit.at < PANEL_TTL_MS) {
-    return { gbp: hit.gbp, ads: hit.ads, clicks: hit.clicks, asOf: new Date(hit.at).toISOString() };
+  const gbp = await readGbpPanel(store, now);
+
+  const ads = await panelFromStore<AdsPanel>(
+    store,
+    'ads',
+    windows,
+    now,
+    () => readAdsPanel(now),
+    (note) => blankAdsPanel(windows, note),
+    (covered) =>
+      `These Google Ads figures cover ${covered.from} to ${covered.to}, not the window ` +
+      'above, because the refresh for this window has not succeeded yet. They are shown ' +
+      'for context and are EXCLUDED from the lead total, which cannot add up two ' +
+      'different date ranges.',
+  );
+
+  const clicks = await panelFromStore<ClicksPanel>(
+    store,
+    'clicks',
+    windows,
+    now,
+    () => readClicksPanel(now),
+    (note) => blankClicksPanel(windows, note),
+    (covered) =>
+      `These GA4 figures cover ${covered.from} to ${covered.to}, not the window above, ` +
+      'because the refresh for this window has not succeeded yet. They are shown for ' +
+      'context and are EXCLUDED from the lead total, which cannot add up two different ' +
+      'date ranges.',
+  );
+
+  return { gbp, ads: ads.panel, clicks: clicks.panel, asOf: oldestOf(ads.capturedAt, clicks.capturedAt) };
+}
+
+/** The earlier of two observation times — the honest one to report for both. */
+function oldestOf(a: string | null, b: string | null): string | null {
+  if (!a) return b;
+  if (!b) return a;
+  return a <= b ? a : b;
+}
+
+// ── The scheduled sync ───────────────────────────────────────────────────────
+
+export interface GoogleSyncOutcome {
+  source: PanelSource;
+  action: 'refreshed' | 'skipped' | 'failed';
+  window: ComparisonWindow;
+  capturedAt: string | null;
+  error: string | null;
+}
+
+/**
+ * Read Ads and GA4 and store the panels. The one place that spends Google quota.
+ *
+ * Called from two places: the daily cron, with `force` so a day always gets at
+ * least one real read even if nothing looked at the dashboard, and
+ * `panelFromStore` above when a page load wins the claim. Both go through the
+ * same claim, so a cron run and a page load landing together produce one read,
+ * not two.
+ *
+ * Sources are read one after the other rather than together. Two cold panels
+ * firing at once would halve the wall time and double nothing useful — the
+ * failure of one should not be entangled with the other's logs, and the whole
+ * sequence runs in a few seconds either way.
+ *
+ * `dryRun` reads and reports without writing anything, including without
+ * claiming. It is how the credentials and the queries get proven against
+ * production before a cron depends on them — the same reason
+ * `/api/gbp/sync?dry=1` exists.
+ */
+export async function syncGooglePanels(
+  options: { force?: boolean; dryRun?: boolean; now?: Date } = {},
+): Promise<GoogleSyncOutcome[]> {
+  const now = options.now ?? new Date();
+  const windows = leadWindows(now);
+  const store = getDashboardStore();
+
+  if (!store) {
+    return PANEL_SOURCES.map((source) => ({
+      source,
+      action: 'failed' as const,
+      window: windows.current,
+      capturedAt: null,
+      error: `No service-role Supabase credentials, so ${SNAPSHOT_TABLE} cannot be reached.`,
+    }));
   }
 
-  const gbp = await readGbpPanel(store, now);
-  const ads = await readAdsPanel(now);
-  const clicks = await readClicksPanel(now);
+  const read: Record<PanelSource, () => Promise<AdsPanel | ClicksPanel>> = {
+    ads: () => readAdsPanel(now),
+    clicks: () => readClicksPanel(now),
+  };
 
-  const at = now.getTime();
-  panelCache = { key, at, gbp, ads, clicks };
-  return { gbp, ads, clicks, asOf: new Date(at).toISOString() };
+  const out: GoogleSyncOutcome[] = [];
+
+  for (const source of PANEL_SOURCES) {
+    const base = { source, window: windows.current, capturedAt: null, error: null };
+
+    if (options.dryRun) {
+      try {
+        const panel = await read[source]();
+        out.push({
+          ...base,
+          action: 'refreshed',
+          error: panel.available ? null : `Panel came back unavailable: ${panel.note ?? 'no note'}`,
+        });
+      } catch (err) {
+        out.push({
+          ...base,
+          action: 'failed',
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      continue;
+    }
+
+    try {
+      const won = await claimSnapshot(store, source, windows.current, now, { force: options.force });
+      if (!won) {
+        out.push({ ...base, action: 'skipped' });
+        continue;
+      }
+      const panel = await read[source]();
+      await writeSnapshot(store, source, windows.current, panel, now);
+      out.push({ ...base, action: 'refreshed', capturedAt: now.toISOString() });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[dashboard] ${source} sync failed: ${message}`);
+      try {
+        await writeSnapshotError(store, source, windows.current, message);
+      } catch {
+        // See panelFromStore: the claim already holds the TTL.
+      }
+      out.push({ ...base, action: 'failed', error: message });
+    }
+  }
+
+  return out;
 }
 
 /**
