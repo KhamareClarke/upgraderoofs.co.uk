@@ -1736,9 +1736,16 @@ export interface DashboardData {
   /**
    * When the Ads and GA4 figures were actually READ FROM GOOGLE — which is not
    * `generatedAt`, because they come from `google_panel_snapshots` rather than
-   * from a call made while assembling this payload. It is the older of the two
-   * panels' `captured_at`, so it is never later than either figure. Null when the
-   * store is missing, or when no snapshot has been captured yet.
+   * from a call made while assembling this payload. It is the earlier of the two
+   * panels' `captured_at`, so it is never later than either figure.
+   *
+   * A panel with nothing stored contributes nothing here rather than making the
+   * whole field null: the figures that ARE present were still observed at some
+   * time, and that time is worth reporting. It does mean this timestamp can cover
+   * one panel and not the other — which is why the card's copy says "the Google
+   * figures" rather than naming the products, and why each panel carries its own
+   * note when it has nothing to show. Null when the store is missing, or when
+   * neither panel has ever been captured.
    */
   googleAsOf: string | null;
 }

@@ -813,9 +813,10 @@ function ContextSection({ data }: { data: DashboardData }) {
 
       {data.googleAsOf && (
         <Hint>
-          Ads and GA4 figures were last read from Google at {clockTime(data.googleAsOf)} and are
-          served from storage; the lead figures above are re-read every five minutes. Google
-          revises both for days after the fact, so they are not chased any faster than this.
+          The Google figures below were last read at {clockTime(data.googleAsOf)} and are served
+          from storage; the lead figures above are re-read every five minutes. Google revises them
+          for days after the fact, so they are not chased any faster than this. A panel with
+          nothing stored says why in place of its figures.
         </Hint>
       )}
     </section>
