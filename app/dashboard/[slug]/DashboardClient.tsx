@@ -270,7 +270,7 @@ function LeadHeadline({ data }: { data: DashboardData }) {
 
   return (
     <Card
-      title="Leads this month"
+      title="Leads, last 30 days"
       meta={`${shortDate(current.from)} – ${shortDate(current.to)}`}
     >
       <div className="flex items-end gap-3">
@@ -297,15 +297,17 @@ function LeadHeadline({ data }: { data: DashboardData }) {
         {NUM.format(taps)} contact tap{taps === 1 ? '' : 's'}
       </p>
 
-      {/* The comparison is like-for-like on purpose. Comparing a month in
-          progress against a whole month always reads as a collapse on the 1st. */}
+      {/* Both windows are 30 days long, so the comparison is like-for-like on
+          every day of the month — which is the reason the window is trailing
+          rather than calendar. The dates stay on screen so the span being
+          compared is auditable rather than implied. */}
       <p className="mt-1 text-[12px] leading-relaxed text-white/45">
-        vs {NUM.format(previous.total)} over the same {shortDate(previous.from)} –{' '}
-        {shortDate(previous.to)}
+        vs {NUM.format(previous.total)} over the previous 30 days,{' '}
+        {shortDate(previous.from)} – {shortDate(previous.to)}
         {change === null && ' · nothing recorded in that window, so no % to show'}
       </p>
       <p className="mt-1 text-[11px] text-white/30">
-        All of last month: {NUM.format(previousFull.total)} leads
+        The 30 days before that: {NUM.format(previousFull.total)} leads
       </p>
 
       {/* Delivery: a lead is only genuinely lost when BOTH sinks fail, so this

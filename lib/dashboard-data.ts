@@ -39,13 +39,14 @@ import { selectMetrics, toIsoDate, type StoredMetricRow } from '@/lib/gbp-perfor
  *    Rows carry no lead id, so a lead cannot be reconstructed by grouping. That
  *    is why this counts one channel rather than joining four.
  *
- * 2. A PARTIAL MONTH ALWAYS LOOKS LIKE A COLLAPSE. Comparing the 20 days of a
- *    month-in-progress against a full 30-day month guarantees a ~33% "decline"
- *    on the 1st of every month and a fake recovery by the 30th. So the headline
- *    compares MONTH-TO-DATE against the SAME NUMBER OF DAYS of the previous
- *    month (like-for-like), and the full previous month is reported separately
- *    for context. The date ranges are returned to the UI so the comparison on
- *    screen is always auditable rather than implied.
+ * 2. A WINDOW THAT CHANGES LENGTH CANNOT BE COMPARED. A calendar month is a
+ *    different number of days every day of the month, so comparing the 2 days of
+ *    a month-in-progress against a full 30-day month guarantees a collapse on the
+ *    day the month rolls over and a fake recovery by the 30th. So every window is
+ *    a TRAILING 30 DAYS (`ROLLING_DAYS`), and the three of them are contiguous and
+ *    equal in length, so a percentage means the same thing on every day of the
+ *    month. The date ranges are returned to the UI so the comparison on screen is
+ *    always auditable rather than implied.
  *
  * The same two rules apply to Google Ads below, and a third applies to GBP.
  *
@@ -78,7 +79,7 @@ const PAGE = 1000;
  * Five, matching `scripts/report-gbp-performance.js` — the established, verified
  * reader of this table. It is deliberately a shared convention rather than a
  * number chosen here: two readers of the same series disagreeing about which
- * days are settled would report different totals for the same month, and the
+ * days are settled would report different totals for the same days, and the
  * dashboard would be the one nobody had cross-checked.
  *
  * The window end is RETURNED to the UI and displayed, so the figure on screen is
@@ -159,16 +160,6 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-/** `YYYY-MM-DD` for the first day of `d`'s UTC month. */
-function monthStart(d: Date): string {
-  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-01`;
-}
-
-/** Day-of-month in UTC. */
-function dayOfMonth(d: Date): number {
-  return d.getUTCDate();
-}
-
 const MONTH_NAMES = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
@@ -196,18 +187,19 @@ function addDays(iso: string, days: number): string {
   return toIsoDate(dt);
 }
 
-/** The last day of the month containing `iso`. */
-function monthEnd(iso: string): string {
-  const [y, m] = iso.split('-').map(Number);
-  // Day 0 of the next month is the last day of this one.
-  return toIsoDate(new Date(Date.UTC(y, m - 1 + 1, 0)));
-}
-
-/** The first day of the month before the one containing `iso`. */
-function previousMonthStart(iso: string): string {
-  const [y, m] = iso.split('-').map(Number);
-  return toIsoDate(new Date(Date.UTC(y, m - 1 - 1, 1)));
-}
+/**
+ * Length of each lead window, in days, counted INCLUSIVELY.
+ *
+ * Thirty, and a trailing window rather than a calendar month, because a
+ * month-to-date window is a different length every day: on the 2nd it compares
+ * two days against twenty and renders as a collapse, which is the problem this
+ * replaced rather than worked around.
+ *
+ * The same convention as `GBP_WINDOW_DAYS` above — `addDays(to, -(N - 1))`, so
+ * `from` and `to` are both counted. Two trailing windows on one dashboard that
+ * disagreed about whether a day is inclusive would be a bug nobody could see.
+ */
+const ROLLING_DAYS = 30;
 
 export interface ComparisonWindow {
   from: string;
@@ -215,30 +207,34 @@ export interface ComparisonWindow {
 }
 
 export interface LeadWindows {
-  /** Month-to-date: 1st of this month through today. */
+  /** The trailing 30 days, ending today. */
   current: ComparisonWindow;
-  /** The SAME day-span of last month, so the comparison is like-for-like. */
+  /** The 30 days immediately before `current`, so the comparison is like-for-like. */
   previous: ComparisonWindow;
-  /** All of last month, for context — never used for the percentage. */
+  /** The 30 days before that, for context — never used for the percentage. */
   previousFull: ComparisonWindow;
 }
 
 /**
  * Build the three windows described in trap 2 above.
  *
- * `previous.to` is clamped to the end of the previous month so the 31st of a
- * month does not produce a "previous month" window running into the current one.
+ * Every window is exactly `ROLLING_DAYS` long and ends the day before the next
+ * one starts, so the three are contiguous and the percentage compares two equal
+ * spans on every day of the month. The calendar-month version this replaced
+ * needed clamping to stop a short month's window running into the current one;
+ * fixed offsets from today cannot do that, so there is nothing to clamp.
  */
 export function leadWindows(now = new Date()): LeadWindows {
-  const currentFrom = monthStart(now);
   const currentTo = toIsoDate(now);
-  const prevFrom = previousMonthStart(currentTo);
-  const prevEnd = monthEnd(prevFrom);
-  const wantTo = addDays(prevFrom, dayOfMonth(now) - 1);
+  const currentFrom = addDays(currentTo, -(ROLLING_DAYS - 1));
+  const previousTo = addDays(currentFrom, -1);
+  const previousFrom = addDays(previousTo, -(ROLLING_DAYS - 1));
+  const previousFullTo = addDays(previousFrom, -1);
+  const previousFullFrom = addDays(previousFullTo, -(ROLLING_DAYS - 1));
   return {
     current: { from: currentFrom, to: currentTo },
-    previous: { from: prevFrom, to: wantTo > prevEnd ? prevEnd : wantTo },
-    previousFull: { from: prevFrom, to: prevEnd },
+    previous: { from: previousFrom, to: previousTo },
+    previousFull: { from: previousFullFrom, to: previousFullTo },
   };
 }
 
@@ -660,9 +656,9 @@ export interface AdsConversionFigures {
   currentConversions: number;
   previousConversions: number;
   /**
-   * Conversions across the whole of last month, or null when this figure did not
-   * ask for it — see `AdsActionSpec.needsPreviousFull`. Read only for the tap
-   * figure, which the lead total sums.
+   * Conversions across the third window (the 30 days before `previous`), or null
+   * when this figure did not ask for it — see `AdsActionSpec.needsPreviousFull`.
+   * Read only for the tap figure, which the lead total sums.
    */
   previousFullConversions: number | null;
   /** How many of those appear in Ads' own Conversions column — zero while Secondary. */
@@ -857,10 +853,10 @@ interface AdsActionSpec {
   /** Whether a zero previous window is an artifact of when the action was created. */
   caveatRecordingStart: boolean;
   /**
-   * Whether to also count the whole of last month.
+   * Whether to also count the third window (the 30 days before `previous`).
    *
-   * Only the tap figure needs it, and only because the LEAD TOTAL's "all of last
-   * month" line has to be the same measurement as its other two. Nothing on the
+   * Only the tap figure needs it, and only because the LEAD TOTAL's "30 days
+   * before that" line has to be the same measurement as its other two. Nothing on the
    * Ads panel draws a previousFull figure, so asking for one on the calls and
    * lead-form figures would buy an API call and a failure mode for a number no
    * one reads.
@@ -1255,9 +1251,9 @@ export interface ClicksPanel {
   currentTotals: ClickTotals;
   previousTotals: ClickTotals;
   /**
-   * All of last month, and its totals.
+   * The third window (the 30 days before `previous`), and its totals.
    *
-   * Read for the LEAD TOTAL's "all of last month" line rather than for anything
+   * Read for the LEAD TOTAL's "30 days before that" line rather than for anything
    * this panel draws — that line compares three windows and they have to be the
    * same measurement. This window is not rendered here.
    */
@@ -1500,8 +1496,8 @@ async function readClicksPanel(now: Date): Promise<ClicksPanel> {
     const propertyId = (process.env.GA4_PROPERTY_ID || '').trim();
 
     const token = await mintServiceAccountToken(key);
-    // Three windows, not two: the third is only for the lead total's "all of last
-    // month" line, and is not drawn anywhere in this panel.
+    // Three windows, not two: the third is only for the lead total's "30 days
+    // before that" line, and is not drawn anywhere in this panel.
     const [currentTotals, previousTotals, previousFullTotals] = await Promise.all([
       ga4ClickCounts(token, propertyId, windows.current.from, windows.current.to),
       ga4ClickCounts(token, propertyId, windows.previous.from, windows.previous.to),
@@ -1564,10 +1560,12 @@ interface LeadTapSet {
  *
  * The listing panel deliberately uses its own window: a trailing 30 days ending
  * `coveredTo - GBP_SETTLE_LAG_DAYS`, so that it only ever shows days Google has
- * stopped revising. Folding THAT into a month-to-date total would add a fortnight
- * of the previous month. So the lead total reads `gbp_daily_metrics` over the
- * LEAD windows instead, and pays for it by being incomplete at the recent end —
- * which `settlingNote` discloses rather than hides.
+ * stopped revising. Both windows are 30 days long now, but they are still not the
+ * same 30 days — the panel's ends about five days before the lead window does, so
+ * summing it into the lead total would drop the newest days and count five older
+ * ones instead. So the lead total reads `gbp_daily_metrics` over the LEAD windows
+ * instead, and pays for it by being incomplete at the recent end — which
+ * `settlingNote` discloses rather than hides.
  *
  * ── Why a missing source is named rather than zeroed ─────────────────────────
  *
@@ -1593,13 +1591,20 @@ async function readLeadTaps(
   const ga4 = clicks.available ? clicks : null;
   if (!ga4) missing.push('site call and WhatsApp taps (GA4)');
 
+  // Two different failures put a zero in the Ads component of the total: the
+  // whole panel not loading (a quota or a credential error) and the panel
+  // loading but its tap figure not resolving. They are indistinguishable once
+  // the arithmetic is done, and both shrink the headline, so both are named.
+  // The GA4 branch above only ever has the first case, which is why it can test
+  // the panel alone; here testing `adsTaps` covers both, because it is null
+  // exactly when either has happened.
   const adsTaps = ads.available ? ads.taps : null;
-  if (ads.available && !ads.taps) missing.push('Google Ads tap conversions');
+  if (!adsTaps) missing.push('Google Ads tap conversions');
   // The tap spec always asks for this window, so a null here means the read was
   // skipped rather than that the figure is genuinely unknown. Zeroing it would
-  // quietly shrink the last-month line, so name it instead.
+  // quietly shrink the third line, so name it instead.
   if (adsTaps && adsTaps.previousFullConversions === null) {
-    missing.push('Google Ads tap conversions for last month');
+    missing.push('Google Ads tap conversions for the 30 days before that');
   }
 
   // One read for all three windows: previousFull is the earliest, current the

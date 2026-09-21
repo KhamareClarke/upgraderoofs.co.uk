@@ -17,7 +17,10 @@
  *      figures are therefore compared against counts computed here with a
  *      DIFFERENT mechanism — PostgREST server-side `count=exact` rather than the
  *      app's client-side aggregation over paged rows. A second implementation is
- *      the point: two copies of the same bug would agree.
+ *      the point: two copies of the same bug would agree. The WINDOW SHAPE is
+ *      asserted too — three equal, contiguous trailing windows — because a
+ *      window that quietly changes length compares two different spans and
+ *      renders the difference as a trend.
  *   3. THE PWA. A manifest with a wrong `sizes`, a missing icon, or a service
  *      worker outside its scope all still return 200. They just fail to install,
  *      on a phone, later, where nobody is watching. So the manifest's fields and
@@ -121,18 +124,38 @@ function addDays(isoStr, days) {
   return iso(dt);
 }
 
+/**
+ * The three windows, reimplemented here rather than imported.
+ *
+ * The duplication is deliberate: importing `leadWindows` would make every window
+ * assertion below compare the app against itself, so a mistake in the formula
+ * would verify clean. Written independently, agreement is evidence.
+ *
+ * `ROLLING_DAYS` is counted INCLUSIVELY, so a 30-day window starts 29 days back.
+ */
+const ROLLING_DAYS = 30;
+
 function windows(now = new Date()) {
-  const currentFrom = `${now.getUTCFullYear()}-${pad2(now.getUTCMonth() + 1)}-01`;
   const currentTo = iso(now);
-  const [cy, cm] = currentFrom.split('-').map(Number);
-  const prevFrom = iso(new Date(Date.UTC(cy, cm - 2, 1)));
-  const prevEnd = iso(new Date(Date.UTC(cy, cm - 1, 0)));
-  const wantTo = addDays(prevFrom, now.getUTCDate() - 1);
+  const currentFrom = addDays(currentTo, -(ROLLING_DAYS - 1));
+  const previousTo = addDays(currentFrom, -1);
+  const previousFrom = addDays(previousTo, -(ROLLING_DAYS - 1));
+  const previousFullTo = addDays(previousFrom, -1);
+  const previousFullFrom = addDays(previousFullTo, -(ROLLING_DAYS - 1));
   return {
     current: { from: currentFrom, to: currentTo },
-    previous: { from: prevFrom, to: wantTo > prevEnd ? prevEnd : wantTo },
-    previousFull: { from: prevFrom, to: prevEnd },
+    previous: { from: previousFrom, to: previousTo },
+    previousFull: { from: previousFullFrom, to: previousFullTo },
   };
+}
+
+/** Days covered by a window, counting both ends. */
+function dayCount(win) {
+  const [fy, fm, fd] = win.from.split('-').map(Number);
+  const [ty, tm, td] = win.to.split('-').map(Number);
+  const from = Date.UTC(fy, fm - 1, fd);
+  const to = Date.UTC(ty, tm - 1, td);
+  return Math.round((to - from) / 86400000) + 1;
 }
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
@@ -227,9 +250,9 @@ async function main() {
   }
 
   for (const [name, win, apiPeriod] of [
-    ['this month', w.current, api.current],
-    ['same span last month', w.previous, api.previous],
-    ['all of last month', w.previousFull, api.previousFull],
+    ['last 30 days', w.current, api.current],
+    ['previous 30 days', w.previous, api.previous],
+    ['the 30 days before that', w.previousFull, api.previousFull],
   ]) {
     const accepted = await countGhl(win.from, win.to, undefined);
     const crmOk = await countGhl(win.from, win.to, true);
@@ -284,9 +307,9 @@ async function main() {
       .reduce((a, r) => a + r.value, 0);
 
   const LEAD_WINDOWS = [
-    ['this month', w.current, api.current, 'current'],
-    ['same span last month', w.previous, api.previous, 'previous'],
-    ['all of last month', w.previousFull, api.previousFull, 'previousFull'],
+    ['last 30 days', w.current, api.current, 'current'],
+    ['previous 30 days', w.previous, api.previous, 'previous'],
+    ['the 30 days before that', w.previousFull, api.previousFull, 'previousFull'],
   ];
 
   for (const [name, win, period, which] of LEAD_WINDOWS) {
@@ -352,10 +375,10 @@ async function main() {
     const t = api.current.taps || {};
     const taps = t.callButton + t.whatsapp + t.gbpCalls + t.adsTaps;
     console.log(
-      `  · Leads this month: ${api.current.total} total — ` +
+      `  · Leads, last 30 days: ${api.current.total} total — ` +
         `${api.current.accepted} form + ${taps} taps ` +
         `(${t.callButton} call, ${t.whatsapp} WhatsApp, ${t.adsTaps} ads, ${t.gbpCalls} listing) ` +
-        `· was ${api.previous.total} over the same span`,
+        `· was ${api.previous.total} over the previous 30 days`,
     );
   }
 
@@ -404,12 +427,46 @@ async function main() {
     );
   }
 
-  // Windows must be the declared, non-overlapping shape.
-  assertEqual('current window starts on the 1st', api.current.from.endsWith('-01'), true);
-  if (api.previous.to >= api.current.from) {
-    fail('previous window does not overlap the current one', `${api.previous.to} >= ${api.current.from}`);
-  } else {
-    pass('previous window does not overlap the current one', `${api.previous.from} → ${api.previous.to}`);
+  // ── The windows must be the declared rolling shape ─────────────────────────
+  //
+  // This replaced a check that the window started on the 1st. That assertion
+  // pinned the old calendar anchoring; these pin what actually matters now — that
+  // every window is the same length and that they are contiguous, because a
+  // percentage comparing two different-length spans is the bug the trailing
+  // window exists to prevent.
+  for (const [name, win] of [
+    ['last 30 days', api.current],
+    ['previous 30 days', api.previous],
+    ['the 30 days before that', api.previousFull],
+  ]) {
+    assertEqual(`${name}: window is exactly ${ROLLING_DAYS} days`, dayCount(win), ROLLING_DAYS);
+  }
+
+  assertEqual(
+    'the two compared windows are the same length (like-for-like)',
+    dayCount(api.current),
+    dayCount(api.previous),
+  );
+
+  // Anchored to today, not to a calendar boundary — a window that stops short of
+  // today is silently hiding the newest leads.
+  assertEqual('the window ends today', api.current.to, iso(new Date()));
+  assertEqual(
+    `the window starts ${ROLLING_DAYS - 1} days before it ends`,
+    api.current.from,
+    addDays(api.current.to, -(ROLLING_DAYS - 1)),
+  );
+
+  // Contiguous: no day counted twice, and no day dropped between windows.
+  for (const [name, later, earlier] of [
+    ['previous 30 days', api.current, api.previous],
+    ['the 30 days before that', api.previous, api.previousFull],
+  ]) {
+    assertEqual(
+      `${name}: ends the day before the later window starts`,
+      earlier.to,
+      addDays(later.from, -1),
+    );
   }
 
   // ── 3. GBP panel ───────────────────────────────────────────────────────────
