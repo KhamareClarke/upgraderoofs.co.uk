@@ -45,8 +45,12 @@ CREATE TABLE IF NOT EXISTS google_panel_snapshots (
   -- yesterday's window cannot be summed into today's lead total.
   window_from   date        NOT NULL,
   window_to     date        NOT NULL,
-  -- The resolved panel, or NULL for a row that has been claimed but not yet
-  -- written (a refresh in flight, or one that failed — see last_error).
+  -- The resolved panel, or NULL for a row that has been claimed but for which no
+  -- figures have been stored — a refresh in flight, or one that failed. See
+  -- last_error. A panel that came back with `available: false` (a 429, a rejected
+  -- token) is a NON-ANSWER and is stored as a failure, never here: this column is
+  -- what the dashboard renders, and a non-answer rendered for a full TTL turns a
+  -- rate limit measured in minutes into three hours of missing figures.
   payload       jsonb,
   -- When the row was last CLAIMED. This is the rate limiter, and it is set before
   -- the Google read rather than after, on purpose: a refresh that crashes must not
@@ -54,11 +58,11 @@ CREATE TABLE IF NOT EXISTS google_panel_snapshots (
   -- attempt therefore costs a full TTL before the next one, which is what keeps a
   -- broken credential from becoming a retry storm against the quota.
   claimed_at    timestamptz NOT NULL DEFAULT now(),
-  -- When the payload was actually READ from Google. NULL until a read succeeds.
-  -- This is what the dashboard reports as "figures last read at" — it is an
-  -- observation time, not an ingestion time, and the two must not be conflated
-  -- (the same distinction gbp_daily_metrics draws between metric_date and
-  -- synced_at).
+  -- When the payload was actually READ from Google. NULL until a read returns
+  -- FIGURES — not merely until a read happens. This is what the dashboard reports
+  -- as "figures last read at" — it is an observation time, not an ingestion time,
+  -- and the two must not be conflated (the same distinction gbp_daily_metrics
+  -- draws between metric_date and synced_at).
   captured_at   timestamptz,
   -- Short, PII-free reason from the most recent failed read, cleared on success.
   last_error    text,
@@ -83,17 +87,20 @@ COMMENT ON COLUMN google_panel_snapshots.source IS
 
 COMMENT ON COLUMN google_panel_snapshots.payload IS
   'The whole panel object as the reader returned it, including its note, available flag and '
-  'per-figure error strings. NULL means claimed-but-not-written: either a read is in flight '
-  'or the last one failed — read last_error to tell which. A reader must treat NULL as '
-  '"no figures", never as zero figures.';
+  'per-figure error strings. NULL means claimed-without-figures: either a read is in flight '
+  'or the last one failed — read last_error to tell which. A panel that came back '
+  'available:false is treated as a failure and never stored here, so that a rate limit '
+  'measured in minutes is not served for a TTL measured in hours. A reader must treat NULL '
+  'as "no figures", never as zero figures.';
 
 COMMENT ON COLUMN google_panel_snapshots.claimed_at IS
   'When the row was last claimed for a refresh. Set BEFORE the Google read so a crash or a '
   'failure still rate-limits the next attempt, rather than letting every page load retry.';
 
 COMMENT ON COLUMN google_panel_snapshots.captured_at IS
-  'When the payload was read from Google. NULL until a read succeeds. Reported by the '
-  'dashboard as the observation time of its Ads and GA4 figures.';
+  'When the payload was read from Google. NULL until a read returns FIGURES, not merely until '
+  'a read happens. Reported by the dashboard as the observation time of its Ads and GA4 '
+  'figures.';
 
 -- The read path is "the newest usable row for this source". The primary key leads
 -- with source but orders by window_from before window_to, so it cannot serve that

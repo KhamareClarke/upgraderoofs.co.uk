@@ -1873,7 +1873,21 @@ const SNAPSHOT_NOT_READ_YET_NOTE =
   'does not fall back to reading Google directly: a live read on every page load is ' +
   'what exhausted the Ads quota.';
 
+/**
+ * The reason a panel came back with no figures, for `last_error`.
+ *
+ * The readers answer an unreadable source with `available: false` and a note
+ * rather than by throwing, so "it failed" arrives at the sync as a VALUE, not an
+ * exception — and the note is the only thing that says which failure it was
+ * (missing credentials, a rejected token, a 429). Dropping it would leave a row
+ * that records a failure without recording what failed.
+ */
+function unavailableReason(panel: { note: string | null }): string {
+  return panel.note?.trim() || 'The panel came back unavailable with no reason given.';
+}
+
 /** True when a stored panel covers exactly the window the card is about to draw. */
+
 function coversWindow(covered: ComparisonWindow, wanted: ComparisonWindow): boolean {
   return covered.from === wanted.from && covered.to === wanted.to;
 }
@@ -1889,11 +1903,15 @@ function coversWindow(covered: ComparisonWindow, wanted: ComparisonWindow): bool
  *      path almost every page load takes.
  *   2. Otherwise try to claim. Losing the claim is normal and harmless — someone
  *      else is refreshing — and costs nothing.
- *   3. Having won, read Google and store the result. A failure is recorded
- *      against the row and the row's `claimed_at` still holds the TTL, so a
+ *   3. Having won, read Google and store the result — but only if it HAS one. A
+ *      panel that comes back unavailable is recorded as a failure and not stored,
+ *      because `captured_at` is what the TTL is measured from and storing a
+ *      non-answer would serve it for three hours. A failure is recorded against
+ *      the row either way, and the row's `claimed_at` still holds the TTL, so a
  *      broken credential cannot become one retry per page load.
- *   4. Whatever happened, serve something: the fresh read, or the newest stored
- *      row even if it covers an older window, labelled so the reader knows.
+ *   4. Whatever happened, serve something: the fresh read, the reason it failed,
+ *      or the newest stored row even if it covers an older window, labelled so
+ *      the reader knows.
  */
 async function panelFromStore<T extends {
   available: boolean;
@@ -1939,8 +1957,19 @@ async function panelFromStore<T extends {
   try {
     if (await claimSnapshot(store, source, windows.current, now)) {
       const fresh = await read();
-      await writeSnapshot(store, source, windows.current, fresh, now);
-      return { panel: fresh, capturedAt: now.toISOString() };
+      if (fresh.available) {
+        await writeSnapshot(store, source, windows.current, fresh, now);
+        return { panel: fresh, capturedAt: now.toISOString() };
+      }
+      // A panel that came back unavailable is a NON-ANSWER, not a figure, and the
+      // difference matters because of what storing one would cost: `captured_at`
+      // is what the TTL is measured from, so writing this would serve
+      // "unavailable" for three hours on the strength of one bad minute. That is
+      // not hypothetical — the Ads read fails whole and quietly on a 429, and the
+      // retry hint Google sends back is measured in minutes. Record the reason
+      // and serve it to THIS request; store nothing.
+      await writeSnapshotError(store, source, windows.current, unavailableReason(fresh));
+      return { panel: fresh, capturedAt: null };
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -2018,6 +2047,12 @@ function oldestOf(a: string | null, b: string | null): string | null {
 
 export interface GoogleSyncOutcome {
   source: PanelSource;
+  /**
+   * `refreshed` means figures were read AND stored. `failed` covers both a read
+   * that threw and a read that returned a panel with `available: false` — an
+   * unavailable panel is a non-answer rather than a figure, so it is not stored
+   * and is not a refresh.
+   */
   action: 'refreshed' | 'skipped' | 'failed';
   window: ComparisonWindow;
   capturedAt: string | null;
@@ -2073,11 +2108,16 @@ export async function syncGooglePanels(
     if (options.dryRun) {
       try {
         const panel = await read[source]();
-        out.push({
-          ...base,
-          action: 'refreshed',
-          error: panel.available ? null : `Panel came back unavailable: ${panel.note ?? 'no note'}`,
-        });
+        // An unavailable panel is reported as a FAILURE here, not a refresh.
+        // `dry=1` exists to answer one question — "would the real run store
+        // figures?" — and a panel with no figures would not. Reporting
+        // "refreshed" with an error attached would make this the one place in
+        // the file where an unavailable panel reads as a success.
+        out.push(
+          panel.available
+            ? { ...base, action: 'refreshed' }
+            : { ...base, action: 'failed', error: unavailableReason(panel) },
+        );
       } catch (err) {
         out.push({
           ...base,
@@ -2095,6 +2135,17 @@ export async function syncGooglePanels(
         continue;
       }
       const panel = await read[source]();
+
+      // Same rule as `panelFromStore`, and it is the difference between a
+      // one-minute rate limit costing one minute and costing three hours.
+      if (!panel.available) {
+        const reason = unavailableReason(panel);
+        console.error(`[cron] ${source} came back unavailable: ${reason}`);
+        await writeSnapshotError(store, source, windows.current, reason);
+        out.push({ ...base, action: 'failed', error: reason });
+        continue;
+      }
+
       await writeSnapshot(store, source, windows.current, panel, now);
       out.push({ ...base, action: 'refreshed', capturedAt: now.toISOString() });
     } catch (err) {
