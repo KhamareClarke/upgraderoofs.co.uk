@@ -129,6 +129,27 @@ const GA4_TIMEOUT_MS = 20_000;
  */
 const GA4_CLICKS_RECORDING_FROM = '2026-09-15';
 
+/**
+ * The date the website conversion actions were last recreated.
+ *
+ * The lead-form and tap-click actions were removed and recreated on this date and
+ * came back with new ids, so conversions recorded before it belong to actions
+ * that no longer exist and are not returned for the current ids. The previous
+ * comparison window therefore reads zero BY CONSTRUCTION rather than because
+ * nothing happened — and "0 vs 0" renders identically to "this never worked".
+ *
+ * Written down rather than derived, for the same reason as the GA4 date above:
+ * the API will happily report a zero without saying why. Corroborated by the
+ * data — neither action id returns a row dated before this.
+ *
+ * Only the two WEBPAGE figures use this. The website-call action's own creation
+ * date is less firmly established, and its panel already carries a zero-state
+ * explanation of its own, so no claim is made about it.
+ *
+ * Change this if the wiring changes.
+ */
+const ADS_WEBPAGE_CONVERSIONS_RECORDING_FROM = '2026-09-15';
+
 // ── Date helpers ─────────────────────────────────────────────────────────────
 // UTC throughout, matching lib/gbp-performance.ts. The site serves
 // Europe/London, which is UTC+1 for most of the year: local-time arithmetic
@@ -525,7 +546,8 @@ export interface AdsTotals {
 }
 
 /**
- * The website-call conversion action's figures.
+ * One conversion action's figures — shared by all three the panel reports:
+ * submitted lead forms, phone/WhatsApp tap clicks, and completed calls.
  *
  * ── Why the count is `all_conversions`, not `conversions` ────────────────────
  *
@@ -534,28 +556,48 @@ export interface AdsTotals {
  * and Smart Bidding optimises toward. `metrics.all_conversions` includes every
  * recorded conversion.
  *
- * The live action ("Phone Call (Website)", 7783010814) is flagged
- * `includeInConversionsMetric: false` — Secondary, read from the API, not assumed.
- * So `metrics.conversions` for it is zero BY CONFIGURATION and would stay zero
- * after a hundred calls. Reading that column would produce a panel that is
- * confidently, permanently wrong, which is the failure mode this whole file is
- * written against. The honest count of recorded calls is `all_conversions`, and
- * `inConversionsColumn` below carries the other figure so the difference is
- * visible rather than hidden.
+ * ALL THREE of this account's website actions are flagged
+ * `includeInConversionsMetric: false` — Secondary, read from the API rather than
+ * assumed. So `metrics.conversions` for any of them is zero BY CONFIGURATION and
+ * would stay zero after a hundred conversions. Reading that column would produce
+ * a panel that is confidently, permanently wrong, which is the failure mode this
+ * whole file is written against. The honest count of what Google recorded is
+ * `all_conversions`, and `inConversionsColumn` below carries the other figure so
+ * the difference is visible rather than hidden.
+ *
+ * ── What these numbers do NOT mean ───────────────────────────────────────────
+ *
+ * They are Google's count, not the business's. A form conversion is a
+ * browser-side event on ad traffic only, and it is gated on `ad_storage`
+ * consent, so it is a LOWER BOUND on ad-originated forms and is unrelated to the
+ * lead count at the top of this dashboard, which is server-side and counts CRM
+ * delivery from every source. Neither is wrong; they answer different questions.
+ * The panel shows both rather than implying one is authoritative.
  */
-export interface AdsCalls {
+export interface AdsConversionFigures {
   actionId: string;
   actionName: string;
-  /** Seconds a call must last to be recorded. Read from the API, not assumed. */
-  minimumSeconds: number | null;
-  /** Calls Google recorded in each window. */
-  currentCalls: number;
-  previousCalls: number;
+  /** Conversions Google recorded (`all_conversions`) in each window. */
+  currentConversions: number;
+  previousConversions: number;
   /** How many of those appear in Ads' own Conversions column — zero while Secondary. */
   currentInConversionsColumn: number;
   previousInConversionsColumn: number;
-  /** Set when the figures need explaining (Secondary action, or a fallback match). */
+  /** `include_in_conversions_metric`, read from the API rather than assumed. */
+  secondary: boolean;
+  /** How the action was found. 'type' is the single-candidate fallback, calls only. */
+  via: 'label' | 'type';
+  /**
+   * Set when the figures need explaining: a Secondary action, a fallback match,
+   * or a previous window that reads zero by construction rather than by fact.
+   */
   note: string | null;
+}
+
+/** The website-call figure — the shared shape plus the duration gate. */
+export interface AdsCalls extends AdsConversionFigures {
+  /** Seconds a call must last to be recorded. Read from the API, not assumed. */
+  minimumSeconds: number | null;
 }
 
 export interface AdsPanel {
@@ -565,7 +607,7 @@ export interface AdsPanel {
   previous: ComparisonWindow;
   currentTotals: AdsTotals;
   previousTotals: AdsTotals;
-  /** Website-call figures, or null when they could not be read at all. */
+  /** Completed calls past the action's duration threshold. Resolved by label. */
   calls: AdsCalls | null;
   /**
    * Why `calls` is null. Shown in place of the figure: a missing calls count
@@ -573,6 +615,12 @@ export interface AdsPanel {
    * an unread number means.
    */
   callsError: string | null;
+  /** Submitted lead forms, as Google recorded them. Resolved by label. */
+  leadForm: AdsConversionFigures | null;
+  leadFormError: string | null;
+  /** Phone/WhatsApp button taps, as Google recorded them. Resolved by label. */
+  taps: AdsConversionFigures | null;
+  tapsError: string | null;
 }
 
 const ZERO_ADS: AdsTotals = { costMicros: 0, clicks: 0, impressions: 0 };
@@ -704,56 +752,124 @@ function adsConversionLabel(target: string): string {
   return label.trim();
 }
 
-interface AdsCallAction {
-  id: string;
-  name: string;
-  minimumSeconds: number | null;
-  inConversionsColumn: boolean;
-  /** How the action was found — surfaced when it was not the configured label. */
-  via: 'label' | 'type';
+/**
+ * Which conversion action a figure reports, and how to talk about it.
+ *
+ * `envName` is the variable holding the `AW-<account>/<label>` value the browser
+ * actually fires with, so resolving through it means a repoint in Ads moves the
+ * panel with it. See the doc comment on `chooseAdsAction` for why that matters.
+ */
+interface AdsActionSpec {
+  envName: string;
+  /** The `conversion_action.type` to search. Interpolated into GAQL from this constant. */
+  type: string;
+  /** What the figure counts, plural and lower case, for the explanatory notes. */
+  noun: string;
+  /** Website calls carry a duration gate; nothing else does. */
+  selectDuration: boolean;
+  /** Whether an unlabelled single candidate may be used. Calls only — see below. */
+  allowTypeFallback: boolean;
+  /** Whether a zero previous window is an artifact of when the action was created. */
+  caveatRecordingStart: boolean;
 }
 
 /**
- * Find the website-call conversion action.
+ * The three figures the Ads panel reports, in the order they are rendered.
+ *
+ * The two WEBPAGE entries differ only in which label they claim, so they share
+ * one candidate query — see the cache in `readAdsPanel`.
+ */
+const ADS_ACTION_SPECS = {
+  calls: {
+    envName: 'NEXT_PUBLIC_GADS_CALL_CONV_ID',
+    type: 'WEBSITE_CALL',
+    noun: 'calls',
+    selectDuration: true,
+    allowTypeFallback: true,
+    caveatRecordingStart: false,
+  },
+  leadForm: {
+    envName: 'NEXT_PUBLIC_GADS_CONV_ID',
+    type: 'WEBPAGE',
+    noun: 'form conversions',
+    selectDuration: false,
+    allowTypeFallback: false,
+    caveatRecordingStart: true,
+  },
+  taps: {
+    envName: 'NEXT_PUBLIC_GADS_CLICK_CONV_ID',
+    type: 'WEBPAGE',
+    noun: 'button taps',
+    selectDuration: false,
+    allowTypeFallback: false,
+    caveatRecordingStart: true,
+  },
+} as const satisfies Record<string, AdsActionSpec>;
+
+interface AdsResolvedAction {
+  id: string;
+  name: string;
+  inConversionsColumn: boolean;
+  /** How the action was found — surfaced when it was not the configured label. */
+  via: 'label' | 'type';
+  /** The raw API row, so a caller can pull a type-specific field. */
+  raw: any;
+}
+
+/**
+ * Every ENABLED conversion action of one type, with the snippet needed to match
+ * a label against it.
+ *
+ * `tag_snippets` is a large field, hence the filter to a single type rather than
+ * listing every action on the account. `selectDuration` is set only for the
+ * website-call spec: `phone_call_duration_seconds` means nothing for the others,
+ * and there is no reason to carry it.
+ */
+async function adsActionCandidates(
+  token: string,
+  type: string,
+  selectDuration: boolean,
+): Promise<any[]> {
+  const rows = await adsGaql(
+    token,
+    'SELECT conversion_action.id, conversion_action.name, conversion_action.type, ' +
+      'conversion_action.status, conversion_action.include_in_conversions_metric, ' +
+      'conversion_action.tag_snippets' +
+      (selectDuration ? ', conversion_action.phone_call_duration_seconds' : '') +
+      ' FROM conversion_action ' +
+      `WHERE conversion_action.type = '${type}' AND conversion_action.status = 'ENABLED'`,
+  );
+
+  return rows.map((r) => r.conversionAction).filter((a: any) => a && a.id) as any[];
+}
+
+/**
+ * Pick the action a figure reports, out of the candidates of its type.
  *
  * ── Why by label and not by id ───────────────────────────────────────────────
  *
  * The conversion actions on this account were removed and recreated on
  * 2026-09-15, and the ids are not stable across that. An id typed in here would
  * one day point at a deleted action and report a confident zero forever. The
- * label in `NEXT_PUBLIC_GADS_CALL_CONV_ID` is the value the browser fires with,
- * so resolving through it means a repoint in Ads moves the panel with it.
+ * label is the value the browser fires with, so resolving through it means a
+ * repoint in Ads moves the panel with it.
  *
- * Falls back to the only ENABLED WEBSITE_CALL action when the label is unset or
- * matches nothing, and reports which route was taken so the fallback is visible
- * rather than silent.
+ * ── Why only calls may fall back to position ─────────────────────────────────
  *
- * `tag_snippets` is fetched for the label only — it is a large field, which is
- * why the query is filtered to WEBSITE_CALL rather than listing every action.
+ * With exactly one candidate and no usable label, picking it is unambiguous, and
+ * that is allowed for the website-call action. It is deliberately WITHHELD from
+ * the two WEBPAGE figures: this account carries several actions of that type, so
+ * choosing one by position would report its conversions under another action's
+ * name — a wrong number that looks entirely right. An unmatched label there
+ * throws, and surfaces as that figure's error rather than as a figure.
+ *
+ * An empty label is rejected before matching rather than after: `includes('')`
+ * is true for every candidate, which would bind the figure to whichever action
+ * the API happened to return first.
  */
-async function resolveAdsCallAction(token: string): Promise<AdsCallAction> {
-  const rows = await adsGaql(
-    token,
-    'SELECT conversion_action.id, conversion_action.name, conversion_action.type, ' +
-      'conversion_action.status, conversion_action.include_in_conversions_metric, ' +
-      'conversion_action.phone_call_duration_seconds, conversion_action.tag_snippets ' +
-      'FROM conversion_action ' +
-      "WHERE conversion_action.type = 'WEBSITE_CALL' AND conversion_action.status = 'ENABLED'",
-  );
+function chooseAdsAction(candidates: any[], spec: AdsActionSpec): AdsResolvedAction {
+  const wantLabel = adsConversionLabel(process.env[spec.envName] || '');
 
-  const candidates = rows
-    .map((r) => r.conversionAction)
-    .filter((a: any) => a && a.id) as any[];
-
-  if (candidates.length === 0) {
-    throw new Error(
-      'no ENABLED WEBSITE_CALL conversion action exists on this account, so nothing ' +
-        'can record a call — create one (scripts/setup-website-call-conversions.js) ' +
-        'and set NEXT_PUBLIC_GADS_CALL_CONV_ID to its label.',
-    );
-  }
-
-  const wantLabel = adsConversionLabel(process.env.NEXT_PUBLIC_GADS_CALL_CONV_ID || '');
   const matchesLabel = (a: any): boolean =>
     !!wantLabel &&
     (a.tagSnippets || []).some((s: any) =>
@@ -761,31 +877,41 @@ async function resolveAdsCallAction(token: string): Promise<AdsCallAction> {
     );
 
   const match = wantLabel ? candidates.find(matchesLabel) : undefined;
-  // Only fall back to position when there is exactly one candidate: with two
-  // website-call actions and no label to choose between them, guessing would
-  // report one action's calls under the other's name.
-  const chosen = match || (candidates.length === 1 ? candidates[0] : undefined);
+  const fallback =
+    spec.allowTypeFallback && candidates.length === 1 ? candidates[0] : undefined;
+  const chosen = match || fallback;
 
   if (!chosen) {
+    if (candidates.length === 0) {
+      throw new Error(
+        `no ENABLED ${spec.type} conversion action exists on this account, so nothing ` +
+          `can record ${spec.noun} — create one and set ${spec.envName} to its label.`,
+      );
+    }
+    const labelNote = wantLabel
+      ? `none carries the configured label (${wantLabel})`
+      : `${spec.envName} is unset or carries no label part`;
     throw new Error(
-      `${candidates.length} ENABLED WEBSITE_CALL conversion actions exist and none ` +
-        `carries the configured label (${wantLabel || 'NEXT_PUBLIC_GADS_CALL_CONV_ID is unset'}), ` +
-        'so there is no way to tell which one this panel should report.',
+      spec.allowTypeFallback
+        ? `${candidates.length} ENABLED ${spec.type} conversion actions exist and ${labelNote}, ` +
+            'so there is no way to tell which one this panel should report.'
+        : `${candidates.length} ENABLED ${spec.type} conversion actions exist and ${labelNote}. ` +
+            'This figure is matched by label alone, because choosing between several actions ' +
+            "of this type by position would report one action's conversions under another's name.",
     );
   }
 
-  const seconds = Number(chosen.phoneCallDurationSeconds);
   return {
     id: String(chosen.id),
     name: String(chosen.name || chosen.id),
-    minimumSeconds: Number.isFinite(seconds) && seconds > 0 ? seconds : null,
     inConversionsColumn: chosen.includeInConversionsMetric === true,
     via: match ? 'label' : 'type',
+    raw: chosen,
   };
 }
 
 /**
- * Count the calls the action recorded in one window.
+ * Count what one action recorded in one window.
  *
  * `segments.conversion_action` is in the SELECT as well as the WHERE: filtering
  * on a segment without selecting it is rejected with
@@ -793,30 +919,71 @@ async function resolveAdsCallAction(token: string): Promise<AdsCallAction> {
  * names the action it belongs to, so a mis-scoped filter is visible in the data
  * rather than only in the total.
  */
-async function adsCallCounts(
+async function adsActionCounts(
   token: string,
-  action: AdsCallAction,
+  actionId: string,
   from: string,
   to: string,
-): Promise<{ calls: number; inConversionsColumn: number }> {
+): Promise<{ conversions: number; inConversionsColumn: number }> {
   const customerId = (process.env.GOOGLE_ADS_CUSTOMER_ID || '').replace(/\D/g, '');
   const rows = await adsGaql(
     token,
     'SELECT segments.conversion_action, segments.conversion_action_name, ' +
       'metrics.conversions, metrics.all_conversions FROM customer ' +
-      `WHERE segments.conversion_action = 'customers/${customerId}/conversionActions/${action.id}' ` +
+      `WHERE segments.conversion_action = 'customers/${customerId}/conversionActions/${actionId}' ` +
       `AND segments.date BETWEEN '${from}' AND '${to}'`,
   );
 
-  let calls = 0;
+  let conversions = 0;
   let inConversionsColumn = 0;
   for (const row of rows) {
     const m = row.metrics || {};
     // Ads returns int64 metrics as strings.
-    calls += Number(m.allConversions || 0);
+    conversions += Number(m.allConversions || 0);
     inConversionsColumn += Number(m.conversions || 0);
   }
-  return { calls, inConversionsColumn };
+  return { conversions, inConversionsColumn };
+}
+
+/**
+ * Caveats specific to one figure, or null when there are none.
+ *
+ * A note is set from facts read off the API and off the window boundaries — not
+ * from a flag someone has to remember to clear — so each one stops appearing by
+ * itself once it stops being true.
+ *
+ * The Secondary fact is deliberately NOT in here. It is carried by the `secondary`
+ * flag instead, because a flag is what the verifier can check against its own
+ * independent read, and because all three actions on this account are Secondary:
+ * as three per-figure sentences it said the same thing three times, which reads
+ * as noise rather than as a warning. The panel states it once.
+ */
+function adsFiguresNote(
+  action: AdsResolvedAction,
+  spec: AdsActionSpec,
+  previousFrom: string,
+): string | null {
+  const notes: string[] = [];
+
+  if (action.via === 'type') {
+    notes.push(
+      `Matched by type, not by label — ${spec.envName} does not identify ` +
+        `"${action.name}", so this is the account's only enabled ${spec.type} action.`,
+    );
+  }
+
+  // Zero in the earlier window can be an artifact of when the action was created
+  // rather than a fact about demand, and the two render identically. Said only
+  // while it is true, and it stops on its own once the windows move past the date.
+  if (spec.caveatRecordingStart && previousFrom < ADS_WEBPAGE_CONVERSIONS_RECORDING_FROM) {
+    notes.push(
+      `This action was recreated on ${readableDate(ADS_WEBPAGE_CONVERSIONS_RECORDING_FROM)}, ` +
+        'so the previous window reads zero because nothing was recorded then, not because ' +
+        'none happened — the change shown is not a real rise.',
+    );
+  }
+
+  return notes.length ? notes.join(' ') : null;
 }
 
 async function readAdsPanel(now: Date): Promise<AdsPanel> {
@@ -830,6 +997,10 @@ async function readAdsPanel(now: Date): Promise<AdsPanel> {
     previousTotals: { ...ZERO_ADS },
     calls: null,
     callsError: null,
+    leadForm: null,
+    leadFormError: null,
+    taps: null,
+    tapsError: null,
   };
 
   const missing = missingAdsVars();
@@ -838,13 +1009,12 @@ async function readAdsPanel(now: Date): Promise<AdsPanel> {
   }
 
   // Spend, clicks and impressions only. `metrics.conversions` is deliberately
-  // NOT queried here: the browser-side conversion actions on this account
-  // recorded nothing across ~£954 of spend, so an unqualified "conversions"
-  // figure next to the spend would not mean what it looks like it means.
-  //
-  // The website-call action is the exception, and it is read separately below
-  // against ITS OWN action id rather than as an account-wide total — see the
-  // AdsCalls doc comment on why that count comes from `all_conversions`.
+  // NOT queried at account level: an account-wide "conversions" figure would mix
+  // the three website actions below with the offline uploads and the removed
+  // actions, and would not mean what it looks like it means. Each conversion
+  // figure is read separately against ITS OWN action id — see the
+  // AdsConversionFigures doc comment on why those counts come from
+  // `all_conversions`.
   const totalsFor = async (token: string, from: string, to: string): Promise<AdsTotals> => {
     const rows = await adsGaql(
       token,
@@ -862,62 +1032,94 @@ async function readAdsPanel(now: Date): Promise<AdsPanel> {
   };
 
   try {
-    // Minted once and reused for both windows — two exchanges for one page view
+    // Minted once and reused for every window — two exchanges for one page view
     // is a needless round trip, and a credential problem should surface as one
     // error rather than two.
     const token = await mintAdsToken();
 
-    // The call figures are read in their own try: a rejected GAQL query or a
-    // missing call action must not blank the spend figures beside it, which are
-    // read from a different resource and are almost always fine. Whatever goes
-    // wrong is carried in `callsError` and rendered, never swallowed.
-    let calls: AdsCalls | null = null;
-    let callsError: string | null = null;
-    try {
-      const action = await resolveAdsCallAction(token);
+    // The two WEBPAGE figures look in the same candidate set and differ only in
+    // which label they claim, so that query is made once and shared. Keyed by
+    // type as well as the duration flag so a future spec of another type cannot
+    // collide with this one.
+    const candidateCache = new Map<string, Promise<any[]>>();
+    const candidatesFor = (spec: AdsActionSpec): Promise<any[]> => {
+      const key = `${spec.type}:${spec.selectDuration}`;
+      let pending = candidateCache.get(key);
+      if (!pending) {
+        pending = adsActionCandidates(token, spec.type, spec.selectDuration);
+        candidateCache.set(key, pending);
+      }
+      return pending;
+    };
+
+    // One figure, resolved and counted. Throws rather than returning a partial;
+    // the caller turns that into that figure's error.
+    const readFigure = async (
+      spec: AdsActionSpec,
+    ): Promise<{ action: AdsResolvedAction; figures: AdsConversionFigures }> => {
+      const action = chooseAdsAction(await candidatesFor(spec), spec);
       const [cur, prev] = await Promise.all([
-        adsCallCounts(token, action, windows.current.from, windows.current.to),
-        adsCallCounts(token, action, windows.previous.from, windows.previous.to),
+        adsActionCounts(token, action.id, windows.current.from, windows.current.to),
+        adsActionCounts(token, action.id, windows.previous.from, windows.previous.to),
       ]);
-
-      const notes: string[] = [];
-      if (action.via === 'type') {
-        notes.push(
-          `Matched by type, not by label — NEXT_PUBLIC_GADS_CALL_CONV_ID does not ` +
-            `identify "${action.name}", so this is the account's only enabled ` +
-            'website-call action.',
-        );
-      }
-      if (!action.inConversionsColumn) {
-        notes.push(
-          'The action is set to SECONDARY for the account\'s goals, so Smart Bidding is ' +
-            'not optimising toward these calls. They are still recorded — the count below ' +
-            'is what Google saw, which is the honest number either way.',
-        );
-      }
-
-      calls = {
-        actionId: action.id,
-        actionName: action.name,
-        minimumSeconds: action.minimumSeconds,
-        currentCalls: cur.calls,
-        previousCalls: prev.calls,
-        currentInConversionsColumn: cur.inConversionsColumn,
-        previousInConversionsColumn: prev.inConversionsColumn,
-        note: notes.length ? notes.join(' ') : null,
+      return {
+        action,
+        figures: {
+          actionId: action.id,
+          actionName: action.name,
+          currentConversions: cur.conversions,
+          previousConversions: prev.conversions,
+          currentInConversionsColumn: cur.inConversionsColumn,
+          previousInConversionsColumn: prev.inConversionsColumn,
+          secondary: !action.inConversionsColumn,
+          via: action.via,
+          note: adsFiguresNote(action, spec, windows.previous.from),
+        },
       };
-    } catch (err) {
-      callsError = err instanceof Error ? err.message : String(err);
-      console.error(`[dashboard] Google Ads call read failed: ${callsError}`);
-    }
+    };
+
+    // Each figure is read in its own try: a rejected GAQL query or a missing
+    // action must blank only that figure — never the spend totals beside it,
+    // which come from a different resource and are almost always fine, and never
+    // the other figures, which are separate actions. Whatever goes wrong is
+    // carried in that figure's own *Error and rendered, never swallowed.
+    const slot = async <T>(
+      label: string,
+      read: () => Promise<T>,
+    ): Promise<{ value: T | null; error: string | null }> => {
+      try {
+        return { value: await read(), error: null };
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[dashboard] Google Ads ${label} read failed: ${message}`);
+        return { value: null, error: message };
+      }
+    };
+
+    const [callSlot, leadFormSlot, tapsSlot] = await Promise.all([
+      slot('call', async (): Promise<AdsCalls> => {
+        const { action, figures } = await readFigure(ADS_ACTION_SPECS.calls);
+        const seconds = Number(action.raw.phoneCallDurationSeconds);
+        // Read from the action rather than assumed, so the "60s+" in the label
+        // cannot drift from what Google is actually enforcing.
+        const minimumSeconds = Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+        return { ...figures, minimumSeconds };
+      }),
+      slot('lead-form', async () => (await readFigure(ADS_ACTION_SPECS.leadForm)).figures),
+      slot('tap-click', async () => (await readFigure(ADS_ACTION_SPECS.taps)).figures),
+    ]);
 
     return {
       ...base,
       available: true,
       currentTotals: await totalsFor(token, windows.current.from, windows.current.to),
       previousTotals: await totalsFor(token, windows.previous.from, windows.previous.to),
-      calls,
-      callsError,
+      calls: callSlot.value,
+      callsError: callSlot.error,
+      leadForm: leadFormSlot.value,
+      leadFormError: leadFormSlot.error,
+      taps: tapsSlot.value,
+      tapsError: tapsSlot.error,
     };
   } catch (err) {
     console.error(`[dashboard] Google Ads read failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -1284,6 +1486,10 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
         previousTotals: { ...ZERO_ADS },
         calls: null,
         callsError: null,
+        leadForm: null,
+        leadFormError: null,
+        taps: null,
+        tapsError: null,
       },
       // Reported unavailable rather than read, even though GA4 needs no Supabase
       // credentials. Same reason the Ads panel is skipped here: a deployment that

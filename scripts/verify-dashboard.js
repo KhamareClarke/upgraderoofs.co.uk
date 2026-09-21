@@ -292,6 +292,15 @@ async function main() {
     console.log(`  · Ads unavailable: ${api.ads.note}`);
   } else {
     pass('Ads spend read', `£${(api.ads.currentTotals.costMicros / 1e6).toFixed(2)} this period`);
+    // Printed here so the run shows what the panel renders, before section 8
+    // spends its time re-reading each figure against the API independently.
+    console.log(
+      `  · ${ADS_FIGURES.map((f) => {
+        const figures = api.ads[f.key];
+        if (!figures) return `${f.label}: unread`;
+        return `${f.label}: ${figures.currentConversions} (was ${figures.previousConversions})`;
+      }).join(' · ')}`,
+    );
   }
 
   // ── 5. PWA wiring ──────────────────────────────────────────────────────────
@@ -433,11 +442,11 @@ async function main() {
     fail('home still fires the Ads config call', 'guarded Ads config call not found in the inline script');
   }
 
-  // ── 8. GA4 clicks and Ads call conversions ─────────────────────────────────
+  // ── 8. GA4 clicks and the three Ads conversion figures ─────────────────────
   section('8. The two Google panels — re-read independently');
 
   await verifyClicks(api, w);
-  await verifyAdsCalls(api);
+  await verifyAdsActions(api);
 
   report();
 }
@@ -651,26 +660,79 @@ async function gaql(token, query) {
   return (Array.isArray(parsed) ? parsed : [parsed]).flatMap((b) => b.results || []);
 }
 
-async function verifyAdsCalls(api) {
+/**
+ * The three conversion figures the Ads panel reports.
+ *
+ * `type` and `env` are this script's OWN statement of what each figure should
+ * resolve to — deliberately restated rather than imported from the app, so a bug
+ * in the app's resolution cannot agree with itself here.
+ */
+const ADS_FIGURES = [
+  {
+    key: 'calls',
+    errorKey: 'callsError',
+    label: 'Calls',
+    env: 'NEXT_PUBLIC_GADS_CALL_CONV_ID',
+    type: 'WEBSITE_CALL',
+    caveatsRecordingStart: false,
+  },
+  {
+    key: 'leadForm',
+    errorKey: 'leadFormError',
+    label: 'Lead form',
+    env: 'NEXT_PUBLIC_GADS_CONV_ID',
+    type: 'WEBPAGE',
+    caveatsRecordingStart: true,
+  },
+  {
+    key: 'taps',
+    errorKey: 'tapsError',
+    label: 'Tap clicks',
+    env: 'NEXT_PUBLIC_GADS_CLICK_CONV_ID',
+    type: 'WEBPAGE',
+    caveatsRecordingStart: true,
+  },
+];
+
+/** Mirrors the app's constant. Restated on purpose — see ADS_FIGURES. */
+const ADS_WEBPAGE_CONVERSIONS_RECORDING_FROM = '2026-09-15';
+
+async function verifyAdsActions(api) {
   if (!api.ads || !api.ads.available) {
-    console.log('  · Ads unavailable — call conversions NOT cross-checked');
+    console.log('  · Ads unavailable — conversion figures NOT cross-checked');
     return;
   }
 
-  // The invariant that stops a failed read from rendering as "no calls happened".
-  if (!api.ads.calls && !api.ads.callsError) {
-    fail('a missing call read carries a reason', 'calls is null and callsError is empty');
-  } else if (!api.ads.calls && api.ads.callsError) {
-    fail('call conversions were read', `callsError: ${api.ads.callsError}`);
-  } else {
-    pass('call conversions were read');
+  // The invariant that stops a failed read from rendering as a real zero: a
+  // figure and its reason are always one-null-each.
+  for (const f of ADS_FIGURES) {
+    const figures = api.ads[f.key];
+    const error = api.ads[f.errorKey];
+    if (!figures && !error) {
+      fail(`${f.label}: a missing read carries a reason`, `${f.key} is null and ${f.errorKey} is empty`);
+    } else if (!figures && error) {
+      fail(`${f.label}: conversions were read`, `${f.errorKey}: ${error}`);
+    } else if (figures && error) {
+      fail(`${f.label}: a successful read carries no error`, `${f.key} present but ${f.errorKey} is set`);
+    } else {
+      pass(`${f.label}: conversions were read`);
+    }
   }
 
-  if (!api.ads.calls) return;
-  const calls = api.ads.calls;
+  const present = ADS_FIGURES.filter((f) => api.ads[f.key]);
+  if (present.length === 0) return;
+
+  // Three figures bound to the same action would mean a label collision silently
+  // pointed two of them at one action — a wrong number that looks entirely right.
+  const ids = present.map((f) => api.ads[f.key].actionId);
+  if (new Set(ids).size === ids.length) {
+    pass('each figure reports a different conversion action', ids.join(', '));
+  } else {
+    fail('each figure reports a different conversion action', `repeats in ${ids.join(', ')}`);
+  }
 
   if (!(process.env.GOOGLE_ADS_CLIENT_ID || '').trim()) {
-    console.log('  · Ads credentials unset — call figures NOT cross-checked');
+    console.log('  · Ads credentials unset — conversion figures NOT cross-checked');
     return;
   }
 
@@ -682,6 +744,12 @@ async function verifyAdsCalls(api) {
     return;
   }
 
+  for (const f of present) await verifyOneAdsFigure(token, api, f);
+}
+
+async function verifyOneAdsFigure(token, api, f) {
+  const figures = api.ads[f.key];
+
   // The action the panel claims to be reporting.
   let action;
   try {
@@ -689,34 +757,59 @@ async function verifyAdsCalls(api) {
       token,
       'SELECT conversion_action.id, conversion_action.name, conversion_action.type, ' +
         'conversion_action.status, conversion_action.include_in_conversions_metric, ' +
-        'conversion_action.phone_call_duration_seconds FROM conversion_action ' +
-        `WHERE conversion_action.id = ${calls.actionId}`,
+        'conversion_action.phone_call_duration_seconds, conversion_action.tag_snippets ' +
+        'FROM conversion_action ' +
+        `WHERE conversion_action.id = ${figures.actionId}`,
     );
     action = rows[0]?.conversionAction;
   } catch (err) {
-    fail('the reported conversion action is readable', err.message);
+    fail(`${f.label}: the reported conversion action is readable`, err.message);
     return;
   }
 
   if (!action) {
-    fail('the reported conversion action exists', `id ${calls.actionId} not found`);
+    fail(`${f.label}: the reported conversion action exists`, `id ${figures.actionId} not found`);
     return;
   }
-  pass('the reported conversion action exists', `${action.id} ${action.name}`);
+  pass(`${f.label}: the reported conversion action exists`, `${action.id} ${action.name}`);
 
-  assertEqual('the reported action is a website-call action', action.type, 'WEBSITE_CALL');
-  assertEqual('the reported action is enabled', action.status, 'ENABLED');
-  assertEqual(
-    'the call-duration threshold matches the action',
-    calls.minimumSeconds,
-    Number(action.phoneCallDurationSeconds),
-  );
+  assertEqual(`${f.label}: the reported action is the expected type`, action.type, f.type);
+  assertEqual(`${f.label}: the reported action is enabled`, action.status, 'ENABLED');
+
+  // The check that makes "resolved by label, never by a hardcoded id" real rather
+  // than asserted: the configured label must actually be in the action chosen.
+  const configured = (process.env[f.env] || '').trim();
+  const wantLabel = configured.includes('/') ? configured.split('/')[1].trim() : '';
+  if (!wantLabel) {
+    fail(`${f.label}: ${f.env} carries a label`, `value is ${configured || '(unset)'}`);
+  } else {
+    const snippets = (action.tagSnippets || [])
+      .map((s) => `${s.eventSnippet || ''}${s.globalSiteTag || ''}`)
+      .join('');
+    if (snippets.includes(wantLabel)) {
+      pass(`${f.label}: the resolved action carries the configured label`, wantLabel);
+    } else {
+      fail(
+        `${f.label}: the resolved action carries the configured label`,
+        `${f.env} says ${wantLabel} but action ${action.id} does not contain it`,
+      );
+    }
+  }
+
+  assertEqual(`${f.label}: the match route is reported as the label`, figures.via, 'label');
+
+  if (f.key === 'calls') {
+    const seconds = Number(action.phoneCallDurationSeconds);
+    const expected = Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+    assertEqual(`${f.label}: the duration threshold matches the action`, figures.minimumSeconds, expected);
+  }
 
   // The trap this whole panel had to avoid: an action flagged out of the
-  // Conversions column reports 0 there forever. If that flag is set, the panel's
-  // count MUST be coming from all_conversions, and its `inConversionsColumn`
-  // figure must be the (zero) other column.
+  // Conversions column reports 0 there forever. The panel's own `secondary` flag
+  // is checked against the API rather than against the account's current setup,
+  // so making an action Primary later is not a test failure.
   const secondary = action.includeInConversionsMetric !== true;
+  assertEqual(`${f.label}: the Secondary flag matches the API`, figures.secondary, secondary);
 
   for (const [which, win] of [
     ['current', api.ads.current],
@@ -728,36 +821,51 @@ async function verifyAdsCalls(api) {
         token,
         'SELECT segments.conversion_action, metrics.conversions, metrics.all_conversions ' +
           `FROM customer WHERE segments.conversion_action = ` +
-          `'customers/${(process.env.GOOGLE_ADS_CUSTOMER_ID || '').replace(/\D/g, '')}/conversionActions/${calls.actionId}' ` +
+          `'customers/${(process.env.GOOGLE_ADS_CUSTOMER_ID || '').replace(/\D/g, '')}/conversionActions/${figures.actionId}' ` +
           `AND segments.date BETWEEN '${win.from}' AND '${win.to}'`,
       );
     } catch (err) {
-      fail(`independent call read for the ${which} window`, err.message);
+      fail(`${f.label}: independent read for the ${which} window`, err.message);
       continue;
     }
     const allConversions = rows.reduce((a, r) => a + Number(r.metrics?.allConversions || 0), 0);
     const inColumn = rows.reduce((a, r) => a + Number(r.metrics?.conversions || 0), 0);
 
-    const field = which === 'current' ? 'currentCalls' : 'previousCalls';
+    const field = which === 'current' ? 'currentConversions' : 'previousConversions';
     const colField = which === 'current' ? 'currentInConversionsColumn' : 'previousInConversionsColumn';
-    assertEqual(`${which}: recorded calls match an independent Ads read`, calls[field], allConversions);
-    assertEqual(`${which}: the Conversions-column figure matches`, calls[colField], inColumn);
-  }
+    assertEqual(`${f.label}: ${which} matches an independent Ads read`, figures[field], allConversions);
+    assertEqual(`${f.label}: ${which} Conversions-column figure matches`, figures[colField], inColumn);
 
-  if (secondary) {
-    // Not a failure — but it must be stated, because it is why the number on the
-    // dashboard differs from the one inside Google Ads.
-    const cur = calls.currentInConversionsColumn;
-    if (cur === 0) {
-      pass('a Secondary action is reported as absent from Ads\' own Conversions column');
-    } else {
+    if (secondary && figures[colField] !== 0) {
       fail(
-        'a Secondary action cannot appear in the Conversions column',
-        `includeInConversionsMetric is false but the panel reported ${cur}`,
+        `${f.label}: a Secondary action cannot appear in the Conversions column`,
+        `includeInConversionsMetric is false but the panel reported ${figures[colField]}`,
       );
     }
-    if (calls.note) pass('the Secondary action is explained on the panel');
-    else fail('the Secondary action is explained on the panel', 'no note set');
+  }
+
+  // The recording-start caveat must appear exactly while it applies. If it could
+  // not turn itself off it would be decoration rather than a check, and if it
+  // never appeared a zero previous window would read as a collapse in demand.
+  if (f.caveatsRecordingStart) {
+    const applies = api.ads.previous.from < ADS_WEBPAGE_CONVERSIONS_RECORDING_FROM;
+    const said = (figures.note || '').includes('recreated on');
+    if (applies && !said) {
+      fail(
+        `${f.label}: warns that its previous window predates the action`,
+        `previous starts ${api.ads.previous.from}, note is ${figures.note ? `"${figures.note}"` : 'empty'}`,
+      );
+    } else if (!applies && said) {
+      fail(
+        `${f.label}: stops warning once both windows postdate the action`,
+        `previous starts ${api.ads.previous.from} but a note is still set`,
+      );
+    } else {
+      pass(
+        `${f.label}: warns about the action's own start exactly when it applies`,
+        applies ? 'warning shown' : 'no warning needed',
+      );
+    }
   }
 }
 

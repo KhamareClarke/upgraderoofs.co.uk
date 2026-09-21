@@ -157,12 +157,18 @@ function Stat({
   previous,
   format = (n: number) => NUM.format(n),
   invert = false,
+  below,
 }: {
   label: string;
   current: number;
   previous: number;
   format?: (n: number) => string;
   invert?: boolean;
+  /**
+   * An optional line under the comparison, for context the delta cannot carry —
+   * a second measurement of the same thing, for instance.
+   */
+  below?: React.ReactNode;
 }) {
   const change = pctChange(current, previous);
   const up = change !== null && change > 0;
@@ -192,6 +198,7 @@ function Stat({
         )}
         <span className="text-white/30">vs {format(previous)}</span>
       </div>
+      {below && <div className="mt-0.5 text-[11px] text-white/30">{below}</div>}
     </div>
   );
 }
@@ -440,14 +447,40 @@ function ClicksPanel({ clicks }: { clicks: DashboardData['clicks'] }) {
   );
 }
 
-function AdsPanel({ ads }: { ads: DashboardData['ads'] }) {
+function AdsPanel({
+  ads,
+  leads,
+}: {
+  ads: DashboardData['ads'];
+  /** The dashboard's own lead window, for the count shown beside the lead-form figure. */
+  leads: DashboardData['current'];
+}) {
   const cpc = (t: { costMicros: number; clicks: number }) =>
     t.clicks > 0 ? t.costMicros / t.clicks : 0;
 
   const calls = ads.calls;
+  const leadForm = ads.leadForm;
+  const taps = ads.taps;
+
   // The threshold is read from the conversion action rather than written here, so
   // the label cannot drift from what Google is actually enforcing.
   const callLabel = calls?.minimumSeconds ? `Calls (${calls.minimumSeconds}s+)` : 'Calls';
+
+  // Google counts a form conversion when the browser fires the tag; the CRM count
+  // is what actually arrived. The gap is shown rather than resolved, because
+  // neither number is the other one being wrong — see the note below.
+  const formGap = leadForm ? leadForm.currentConversions - leads.accepted : 0;
+
+  // Stated once for the panel rather than once per figure: every website action on
+  // this account is Secondary, so three separate sentences would be the same
+  // sentence three times.
+  const secondaryNames = [
+    calls?.secondary ? callLabel : null,
+    leadForm?.secondary ? 'Lead form' : null,
+    taps?.secondary ? 'Tap clicks' : null,
+  ].filter((n): n is string => n !== null);
+  const joinNames = (xs: string[]) =>
+    xs.length === 1 ? xs[0] : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
 
   return (
     <Card
@@ -473,24 +506,49 @@ function AdsPanel({ ads }: { ads: DashboardData['ads'] }) {
             {calls && (
               <Stat
                 label={callLabel}
-                current={calls.currentCalls}
-                previous={calls.previousCalls}
+                current={calls.currentConversions}
+                previous={calls.previousConversions}
+              />
+            )}
+            {leadForm && (
+              <Stat
+                label="Lead form"
+                current={leadForm.currentConversions}
+                previous={leadForm.previousConversions}
+                below={`CRM: ${NUM.format(leads.accepted)} this period`}
+              />
+            )}
+            {taps && (
+              <Stat
+                label="Tap clicks"
+                current={taps.currentConversions}
+                previous={taps.previousConversions}
               />
             )}
           </div>
 
           <Note>
-            Spend, clicks and cost-per-click are account-wide. The call figure is different
-            in kind: it is what Google recorded against the{' '}
-            <span className="text-white/70">{calls?.actionName || 'website call'}</span>{' '}
-            conversion action, so it counts only ad traffic, and only the calls Google was
-            able to see.
+            Spend, clicks and cost-per-click are account-wide. The three figures below them
+            are not — each is what Google recorded against one specific conversion action, so
+            each counts only ad traffic, and only what Google was able to see.
           </Note>
+
+          {/* Said once, for the reason in the component above. */}
+          {secondaryNames.length > 0 && (
+            <Note tone="warn">
+              {secondaryNames.length === 1 ? 'One of these actions' : 'All of these actions'}{' '}
+              — {joinNames(secondaryNames)} —{' '}
+              {secondaryNames.length === 1 ? 'is' : 'are'} set to SECONDARY for the
+              account&apos;s goals, so Smart Bidding is not optimising toward
+              {secondaryNames.length === 1 ? ' it' : ' them'}. The counts below are still what
+              Google recorded, which is the honest number either way.
+            </Note>
+          )}
 
           {/* The zero state, said out loud. An empty cell here would read as a
               fault or as "nobody is calling", when in fact Google cannot record a
               call until ad traffic has seen the forwarding number. */}
-          {calls && calls.currentCalls === 0 && calls.previousCalls === 0 && (
+          {calls && calls.currentConversions === 0 && calls.previousConversions === 0 && (
             <Note>
               No calls recorded yet. Google only registers one when an ad click shows the
               forwarding number and the call runs for{' '}
@@ -502,12 +560,12 @@ function AdsPanel({ ads }: { ads: DashboardData['ads'] }) {
 
           {calls?.note && <Note tone="warn">{calls.note}</Note>}
 
-          {calls && calls.currentInConversionsColumn < calls.currentCalls && (
+          {calls && calls.currentInConversionsColumn < calls.currentConversions && (
             <Note>
               Only {NUM.format(calls.currentInConversionsColumn)} of these{' '}
-              {NUM.format(calls.currentCalls)} appear in the Conversions column inside Google
-              Ads itself, because the action is Secondary. The number above is the count of
-              calls Google recorded.
+              {NUM.format(calls.currentConversions)} appear in the Conversions column inside
+              Google Ads itself, because the action is Secondary. The number above is the
+              count of calls Google recorded.
             </Note>
           )}
 
@@ -518,10 +576,68 @@ function AdsPanel({ ads }: { ads: DashboardData['ads'] }) {
             </Note>
           )}
 
+          {leadForm && (
+            <Note>
+              Lead form is the count of form-fill conversions Google recorded against the{' '}
+              <span className="text-white/70">{leadForm.actionName}</span> action. It is not
+              the lead count: Google sees only ad traffic, only where advertising cookies
+              were accepted, and it counts the tag firing rather than the lead arriving.{' '}
+              {formGap === 0
+                ? 'The two agree in this window.'
+                : `They differ by ${NUM.format(Math.abs(formGap))} this window. The CRM
+                   figure beside it counts every submission that passed the spam filter,
+                   from every source, so neither is the other one being wrong.`}
+            </Note>
+          )}
+
+          {leadForm?.note && <Note tone="warn">{leadForm.note}</Note>}
+
+          {ads.leadFormError && (
+            <Note tone="warn">
+              The lead-form figures could not be read, so they are missing rather than
+              zero: {ads.leadFormError}
+            </Note>
+          )}
+
+          {taps && (
+            <Note>
+              Tap clicks are recorded presses of the phone and WhatsApp links, against the{' '}
+              <span className="text-white/70">{taps.actionName}</span> action. A tap is
+              intent, not a conversation: it says a button was pressed, not that the call
+              connected or the message was sent.
+            </Note>
+          )}
+
+          {taps?.note && <Note tone="warn">{taps.note}</Note>}
+
+          {ads.tapsError && (
+            <Note tone="warn">
+              The tap figures could not be read, so they are missing rather than zero:{' '}
+              {ads.tapsError}
+            </Note>
+          )}
+
+          {/* Both read zero for the same reason, and two empty cells would read as
+              "this never worked" rather than as "Google cannot see it". */}
+          {leadForm &&
+            taps &&
+            leadForm.currentConversions === 0 &&
+            taps.currentConversions === 0 && (
+              <Note>
+                Neither figure has recorded anything this period. Google only counts one when
+                a visitor arrives from an ad click with advertising cookies accepted and the
+                tag fires — organic and direct visitors are invisible to it by design, and a
+                form submitted with cookies declined is a real lead Google never sees. Zero
+                here means Google saw none, not that none happened.
+              </Note>
+            )}
+
           <Note>
-            The account&apos;s other conversion actions are still left out. The browser-side
-            ones recorded nothing across ~£954 of spend, so an account-wide conversions
-            figure would not mean what it looks like it means.
+            Still left out: the account&apos;s offline actions (Job Won, Site Visit Booked),
+            which are uploaded from the CRM rather than recorded from an ad click. An
+            account-wide conversions total would add those to the three above and mean
+            nothing in particular, which is why every figure here is read against its own
+            action id.
           </Note>
         </>
       ) : (
@@ -725,7 +841,7 @@ export function DashboardClient({ slug }: { slug: string }) {
           <SourceBreakdown current={data.current} previous={data.previous} />
           <GbpPanel gbp={data.gbp} />
           <ClicksPanel clicks={data.clicks} />
-          <AdsPanel ads={data.ads} />
+          <AdsPanel ads={data.ads} leads={data.current} />
           <Feed events={data.feed} />
           <InstallHint />
           <p className="pb-2 text-center text-[10px] leading-relaxed text-white/25">
