@@ -39,9 +39,10 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
     // `themeColor` lives on Metadata in Next 13.5 — the separate `viewport`
     // export that owns it (along with the Viewport type) only arrived in 14, so
     // declaring it there is a type error on this version. It colours the browser
-    // and Android status bar to match the app's navy rather than leaving a white
-    // strip above a dark screen.
-    themeColor: '#0A1F44',
+    // and Android status bar to match the app, which is now the site's own light
+    // grey-white. It was navy while the dashboard was a dark app; leaving it navy
+    // would put a dark strip above a white screen.
+    themeColor: '#FAFBFC',
     // No maximumScale cap: the site sets one, but pinching to read a figure is a
     // legitimate thing to want on a dashboard.
     viewport: { width: 'device-width', initialScale: 1 },
@@ -52,7 +53,11 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
     appleWebApp: {
       capable: true,
       title: 'Leads',
-      statusBarStyle: 'black-translucent',
+      // NOT 'black-translucent', which is what a dark app wants: it draws the
+      // clock and battery in WHITE over whatever is behind them. On the light
+      // background this app now has, that is white on white — invisible. The
+      // default gives a standard bar with dark glyphs.
+      statusBarStyle: 'default',
     },
     other: {
       // Belt and braces for older iOS, which predates the appleWebApp API.

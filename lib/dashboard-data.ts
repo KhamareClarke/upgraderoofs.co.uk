@@ -809,9 +809,17 @@ async function adsGaql(token: string, query: string): Promise<any[]> {
   }
 
   if (!res.ok) {
+    // searchStream answers with an ARRAY — one object per streamed chunk — so on
+    // an error the failure hangs off the FIRST ELEMENT, not the root. Reading
+    // only the root finds nothing and falls through to a 300-character slice of
+    // the raw body, which cuts off precisely the part worth having: a quota 429
+    // reads "Too many requests. Retry in 4530 seconds." and names which quota was
+    // hit, and the slice lands mid-sentence at "Retry in". That is how a daily
+    // quota exhaustion spent hours looking like an unexplained failure.
+    const root = Array.isArray(parsed) ? parsed[0] : parsed;
     const errs =
-      (parsed?.details ? parsed.details.flatMap((d: any) => d.errors || []) : null) ||
-      (parsed?.error?.details ? parsed.error.details.flatMap((d: any) => d.errors || []) : []);
+      (root?.details ? root.details.flatMap((d: any) => d.errors || []) : null) ||
+      (root?.error?.details ? root.error.details.flatMap((d: any) => d.errors || []) : []);
     const detail = errs.length
       ? errs.map((e: any) => e.message).join(' | ')
       : JSON.stringify(parsed).slice(0, 300);
@@ -1678,6 +1686,77 @@ export interface DashboardData {
   clicks: ClicksPanel;
   /** Set when the durable store is missing — every figure below is then absent. */
   storeNote: string | null;
+  /**
+   * When the Ads, GA4 and listing figures were actually read — which is NOT
+   * `generatedAt` once the snapshot below is being served from cache. Null when
+   * the store is missing and those reads were skipped.
+   */
+  googleAsOf: string | null;
+}
+
+/**
+ * How long a read of the Ads/GA4/listing panels is reused.
+ *
+ * The dashboard polls every sixty seconds, and one poll costs eleven Google Ads
+ * GAQL queries: two account totals, two conversion-action candidate lookups and
+ * seven per-window counts. That is 15,840 queries a day for a single tab left
+ * open — against a developer token on EXPLORER access, whose ceiling is 2,880
+ * operations per twenty-four hours. So one open tab exhausted the entire token's
+ * daily quota in about four hours and every Ads read afterwards failed with
+ * `RESOURCE_EXHAUSTED` until the window slid forward, which is exactly what the
+ * dashboard was showing as "0 Ads taps" with nothing to say for itself.
+ *
+ * Caching the panels bounds the cost by TIME rather than by how many tabs are
+ * open or how often someone taps Refresh, which raising the poll interval alone
+ * would not: five-minute polling is still 3,168 queries a day. The lead figures
+ * keep refreshing every minute, because those come from Supabase and cost
+ * nothing in quota — and the panels being cached are the ones that lag anyway
+ * (Google Ads revises conversions for days, GA4 for a day or two, and the
+ * listing data settles five days behind).
+ */
+const PANEL_TTL_MS = 15 * 60_000;
+
+/**
+ * The last read of the three panels below the headline.
+ *
+ * Keyed by the current window's dates so a rollover past midnight cannot serve
+ * yesterday's windows, and module-scoped so a warm serverless instance reuses it
+ * across requests. A cold instance simply reads again — the cache is a bound,
+ * not a dependency, and every figure in it is still re-read at least this often.
+ */
+let panelCache: {
+  key: string;
+  at: number;
+  gbp: GbpPanel;
+  ads: AdsPanel;
+  clicks: ClicksPanel;
+} | null = null;
+
+interface PanelSnapshot {
+  gbp: GbpPanel;
+  ads: AdsPanel;
+  clicks: ClicksPanel;
+  asOf: string;
+}
+
+async function readPanelSnapshot(
+  store: SupabaseClient,
+  now: Date,
+  windows: LeadWindows,
+): Promise<PanelSnapshot> {
+  const key = `${windows.current.from}..${windows.current.to}`;
+  const hit = panelCache;
+  if (hit && hit.key === key && now.getTime() - hit.at < PANEL_TTL_MS) {
+    return { gbp: hit.gbp, ads: hit.ads, clicks: hit.clicks, asOf: new Date(hit.at).toISOString() };
+  }
+
+  const gbp = await readGbpPanel(store, now);
+  const ads = await readAdsPanel(now);
+  const clicks = await readClicksPanel(now);
+
+  const at = now.getTime();
+  panelCache = { key, at, gbp, ads, clicks };
+  return { gbp, ads, clicks, asOf: new Date(at).toISOString() };
 }
 
 /**
@@ -1761,6 +1840,7 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
         'No service-role Supabase credentials are configured, so no figures can be read. ' +
         'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, then redeploy — a Vercel env var ' +
         'has no effect until the deployment is rebuilt.',
+      googleAsOf: null,
     };
   }
 
@@ -1802,9 +1882,8 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
       'lead_pipeline_events migration.'
     : null;
 
-  const gbp = await readGbpPanel(store, now);
-  const ads = await readAdsPanel(now);
-  const clicks = await readClicksPanel(now);
+  const panels = await readPanelSnapshot(store, now, windows);
+  const { gbp, ads, clicks } = panels;
 
   // The lead total sums figures the three panels already read, so it has to come
   // after them. This is the one place the lead count depends on Google, and the
@@ -1834,5 +1913,6 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
     ads,
     clicks,
     storeNote,
+    googleAsOf: panels.asOf,
   };
 }

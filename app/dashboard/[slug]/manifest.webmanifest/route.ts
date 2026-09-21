@@ -55,8 +55,11 @@ export async function GET(
     scope: `${base}/`,
     display: 'standalone',
     orientation: 'portrait-primary',
-    background_color: '#0A1F44',
-    theme_color: '#0A1F44',
+    // Both follow the app's own surface. These were navy when the dashboard was a
+    // dark app; on a light dashboard a navy background_color shows as a dark
+    // splash screen flashing before a white page.
+    background_color: '#FAFBFC',
+    theme_color: '#FAFBFC',
     lang: 'en-GB',
     dir: 'ltr',
     categories: ['business', 'productivity'],

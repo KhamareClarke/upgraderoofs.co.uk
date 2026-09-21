@@ -1,12 +1,24 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  AlertCircle,
+  ArrowDownRight,
+  ArrowUpRight,
+  FileText,
+  Inbox,
+  MapPin,
+  MessageCircle,
+  MousePointerClick,
+  Phone,
+  RefreshCw,
+  type LucideIcon,
+} from 'lucide-react';
 
 import type {
-  ClickTotals,
+  AdsConversionFigures,
   DashboardData,
   FeedEvent,
-  GbpActionTotals,
   LeadPeriod,
   LeadTapSources,
 } from '@/lib/dashboard-data';
@@ -31,15 +43,45 @@ import type {
  *
  * ── Nothing here is trusted to be present ───────────────────────────────────
  *
- * Every panel has an unavailable state, because the honest failure modes are
- * real: GBP stops being pulled, the Ads refresh token expires, the service-role
- * key is Production-only (so Preview renders empty by design). A dashboard that
- * shows a confident zero when it means "I could not read this" is the exact
- * failure this codebase has been bitten by — see the 19-day silent lead outage.
- * So a zero always competes with a note explaining it.
+ * Every figure has an unavailable state, because the honest failure modes are
+ * real: GBP stops being pulled, the Ads refresh token expires or its quota runs
+ * out, the service-role key is Production-only (so Preview renders empty by
+ * design). A dashboard that shows a confident zero when it means "I could not
+ * read this" is the exact failure this codebase has been bitten by — see the
+ * 19-day silent lead outage. So a zero always competes with a note explaining it.
+ *
+ * ── ONE LIST, ONE TOTAL ─────────────────────────────────────────────────────
+ *
+ * Every figure that the lead total is made of appears EXACTLY ONCE on this page,
+ * in `LeadBreakdown`. It used to appear two and three times over: the same form
+ * leads as a headline, again as a CRM/Inbox pair, again under "Where they came
+ * from"; the same GA4 taps as breakdown rows AND as a separate "Clicks on the
+ * site" panel; the same listing call clicks in the total AND in the listing
+ * panel. Nothing was wrong with the arithmetic, but a reader adding up the
+ * screen got a much larger number than the headline, which is a far worse
+ * failure than a wrong figure — a wrong figure can be corrected, a layout that
+ * invites double-counting cannot.
+ *
+ * So the page has two sections and they do not overlap:
+ *
+ *   - LEAD BREAKDOWN — the components of the total, summing to it, each once.
+ *   - ADDITIONAL CONTEXT — real numbers that are NOT in the total (spend,
+ *     listing directions and site clicks, ad-attributed conversion counts).
+ *     Labelled as such, and drawn only from fields outside the total's sum.
+ *
+ * `scripts/verify-dashboard.js` asserts both halves: that the breakdown sums to
+ * the headline, and that the context section reads no field the sum uses.
  */
 
-/** Auto-refresh cadence. A lead dashboard does not need to be faster than this. */
+/**
+ * Auto-refresh cadence.
+ *
+ * Stays at a minute because the lead figures come from Supabase and cost nothing
+ * to re-read — this is a lead dashboard, and a lead that arrived a minute ago
+ * should appear within a minute. What needed slowing down was the GOOGLE side,
+ * not the page: see `PANEL_TTL_MS` in lib/dashboard-data.ts, which bounds the
+ * Ads/GA4/listing reads by time so polling faster cannot spend more quota.
+ */
 const REFRESH_MS = 60_000;
 
 // ── Formatting helpers ───────────────────────────────────────────────────────
@@ -59,7 +101,7 @@ function money(micros: number): string {
  * Returning null when the previous period is zero is deliberate: there is no
  * percentage increase from nothing, and rendering "+100%" (or Infinity) would be
  * a made-up figure on a page whose whole job is to be trusted. The caller
- * renders "—" and the raw counts instead.
+ * renders the raw previous count instead.
  */
 function pctChange(current: number, previous: number): number | null {
   if (previous === 0) return null;
@@ -93,6 +135,10 @@ function exactTime(iso: string): string {
   });
 }
 
+function clockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
 /** Human names for the route labels that appear in `source`. */
 const SOURCE_LABELS: Record<string, string> = {
   'send-quote': 'Quote form',
@@ -107,27 +153,18 @@ function sourceLabel(source: string): string {
 }
 
 /**
- * The contact taps counted as leads, in render order.
+ * The taps counted as leads, in render order, with the icon each is drawn with.
  *
  * These are NOT route labels and never appear in `bySource` — they are Google's
  * own counts of contact-button clicks, from three separate products, and they
- * carry fixed labels rather than a `source` column. Kept in one list so the card
- * and the totals below it cannot drift apart.
- *
- * `overlap` marks the one whose taps are already inside another row's figure —
- * see the note under the breakdown.
+ * carry fixed labels rather than a `source` column.
  */
-const TAP_ROWS: Array<{ key: keyof LeadTapSources; label: string; overlap?: boolean }> = [
-  { key: 'callButton', label: 'Call button tap' },
-  { key: 'whatsapp', label: 'WhatsApp tap' },
-  { key: 'adsTaps', label: 'Ads tap conversion', overlap: true },
-  { key: 'gbpCalls', label: 'Google listing call' },
-];
-
-/** Every tap source summed. The verifier re-derives this from the API payload. */
-function tapTotal(taps: LeadTapSources): number {
-  return taps.callButton + taps.whatsapp + taps.gbpCalls + taps.adsTaps;
-}
+const TAP_ICONS: Record<keyof LeadTapSources, LucideIcon> = {
+  callButton: Phone,
+  whatsapp: MessageCircle,
+  adsTaps: MousePointerClick,
+  gbpCalls: MapPin,
+};
 
 /** "a", "a and b", "a, b and c" — for naming what could not be read. */
 function joinNames(names: string[]): string {
@@ -153,668 +190,660 @@ function channelLabel(channel: string): string {
 
 // ── Small presentational pieces ──────────────────────────────────────────────
 
-function Card({
-  title,
-  meta,
-  children,
-}: {
-  title: string;
-  meta?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-[13px] font-semibold uppercase tracking-wider text-white/50">
-          {title}
-        </h2>
-        {meta ? <span className="text-[11px] text-white/40">{meta}</span> : null}
-      </div>
-      {children}
-    </section>
-  );
-}
-
 /**
- * A current-vs-previous figure.
- *
- * `invert` marks metrics where down is good — none today, but the helper exists
- * so a future "cost per lead" tile does not get coloured backwards.
+ * The site's own section kicker — two orange rules around a tracked label.
+ * Reused verbatim from the marketing pages so the dashboard is recognisably the
+ * same brand rather than a lookalike.
  */
-function Stat({
-  label,
-  current,
-  previous,
-  format = (n: number) => NUM.format(n),
-  invert = false,
-  below,
-}: {
-  label: string;
-  current: number;
-  previous: number;
-  format?: (n: number) => string;
-  invert?: boolean;
-  /**
-   * An optional line under the comparison, for context the delta cannot carry —
-   * a second measurement of the same thing, for instance.
-   */
-  below?: React.ReactNode;
-}) {
-  const change = pctChange(current, previous);
-  const up = change !== null && change > 0;
-  const good = invert ? !up : up;
+function Kicker({ children, muted = false }: { children: React.ReactNode; muted?: boolean }) {
   return (
-    <div className="min-w-0">
-      <div className="truncate text-[11px] uppercase tracking-wide text-white/40">{label}</div>
-      <div className="mt-0.5 text-xl font-semibold tabular-nums text-white">
-        {format(current)}
-      </div>
-      <div className="mt-0.5 flex items-baseline gap-1.5 text-[11px]">
-        {change === null ? (
-          <span className="text-white/35">no prior data</span>
-        ) : (
-          <span
-            className={
-              Math.abs(change) < 1
-                ? 'text-white/45'
-                : good
-                  ? 'font-medium text-emerald-400'
-                  : 'font-medium text-red-400'
-            }
-          >
-            {change > 0 ? '+' : ''}
-            {change.toFixed(0)}%
-          </span>
-        )}
-        <span className="text-white/30">vs {format(previous)}</span>
-      </div>
-      {below && <div className="mt-0.5 text-[11px] text-white/30">{below}</div>}
+    <div className="flex items-center gap-3">
+      <span className={`h-px w-8 ${muted ? 'bg-gray-300' : 'bg-brand-orange'}`} aria-hidden />
+      <h2
+        className={`text-xs font-semibold uppercase tracking-[0.2em] ${
+          muted ? 'text-gray-500' : 'text-brand-orange'
+        }`}
+      >
+        {children}
+      </h2>
     </div>
   );
 }
 
-function Note({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: 'neutral' | 'warn' }) {
+/**
+ * A caveat.
+ *
+ * Deliberately quiet: this page is read on a phone, often first thing, and a
+ * wall of amber alert boxes trains a reader to skip exactly the lines that
+ * matter. The `flag` variant earns its orange icon by marking a figure that is
+ * WRONG rather than merely limited — an undercount, or a window that has not
+ * settled — which is the distinction the old design lost by shouting all of it.
+ */
+function Hint({
+  children,
+  flag = false,
+}: {
+  children: React.ReactNode;
+  flag?: boolean;
+}) {
   return (
-    <p
-      className={
-        tone === 'warn'
-          ? 'mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[12px] leading-relaxed text-amber-200'
-          : 'mt-3 text-[12px] leading-relaxed text-white/45'
-      }
-    >
-      {children}
+    <p className="mt-2 flex gap-1.5 text-[11px] leading-relaxed text-gray-500">
+      {flag && (
+        <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0 text-brand-orange" aria-hidden />
+      )}
+      <span className="min-w-0">{children}</span>
     </p>
+  );
+}
+
+/** A change against the previous window, as an arrow and a percentage. */
+function Delta({
+  current,
+  previous,
+  format = (n: number) => NUM.format(n),
+  size = 'sm',
+}: {
+  current: number;
+  previous: number;
+  format?: (n: number) => string;
+  size?: 'sm' | 'md';
+}) {
+  const change = pctChange(current, previous);
+  const text = size === 'md' ? 'text-sm' : 'text-[11px]';
+
+  if (change === null) {
+    return <span className={`${text} text-gray-400`}>was {format(previous)}</span>;
+  }
+
+  const flat = Math.abs(change) < 1;
+  const up = change > 0;
+  const Icon = up ? ArrowUpRight : ArrowDownRight;
+
+  return (
+    <span
+      className={`${text} inline-flex items-baseline gap-0.5 font-medium tabular-nums ${
+        flat ? 'text-gray-400' : up ? 'text-emerald-600' : 'text-red-600'
+      }`}
+    >
+      {!flat && <Icon className="h-3.5 w-3.5 shrink-0 self-center" aria-hidden />}
+      {flat ? 'flat' : `${Math.abs(change).toFixed(0)}%`}
+      <span className="ml-0.5 font-normal text-gray-400">vs {format(previous)}</span>
+    </span>
   );
 }
 
 function Skeleton() {
   return (
-    <div className="animate-pulse space-y-4">
-      <div className="h-28 rounded-2xl bg-white/[0.06]" />
-      <div className="h-24 rounded-2xl bg-white/[0.06]" />
-      <div className="h-40 rounded-2xl bg-white/[0.06]" />
+    <div className="animate-pulse space-y-6 p-5">
+      <div className="h-4 w-24 rounded bg-gray-200" />
+      <div className="h-14 w-32 rounded bg-gray-200" />
+      <div className="space-y-4">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <div key={i} className="h-9 rounded bg-gray-100" />
+        ))}
+      </div>
     </div>
   );
 }
 
-// ── Panels ───────────────────────────────────────────────────────────────────
+// ── The breakdown ────────────────────────────────────────────────────────────
 
-function LeadHeadline({ data }: { data: DashboardData }) {
-  const { current, previous, previousFull } = data;
-  // The headline is the TOTAL — form submissions plus every contact tap — so
-  // every comparison on this card has to be against the same combined figure.
-  // Comparing a total against a forms-only window would read as growth that did
-  // not happen the day taps were folded in.
-  const change = pctChange(current.total, previous.total);
-  const taps = tapTotal(current.taps);
-
-  return (
-    <Card
-      title="Leads, last 30 days"
-      meta={`${shortDate(current.from)} – ${shortDate(current.to)}`}
-    >
-      <div className="flex items-end gap-3">
-        <div className="text-5xl font-semibold leading-none tabular-nums text-white">
-          {NUM.format(current.total)}
-        </div>
-        {change !== null && (
-          <div
-            className={`pb-1 text-sm font-medium ${
-              Math.abs(change) < 1 ? 'text-white/50' : change > 0 ? 'text-emerald-400' : 'text-red-400'
-            }`}
-          >
-            {change > 0 ? '▲' : change < 0 ? '▼' : ''} {Math.abs(change).toFixed(0)}%
-          </div>
-        )}
-      </div>
-
-      {/* What the total is made of, on the card rather than only in the breakdown
-          below: these are two different measurements added together, and a reader
-          who takes the headline as "customers" is reading it wrong. A form is a
-          submission that reached the CRM; a tap is a button click Google counted. */}
-      <p className="mt-2 text-[12px] leading-relaxed text-white/45">
-        {NUM.format(current.accepted)} form submission{current.accepted === 1 ? '' : 's'} ·{' '}
-        {NUM.format(taps)} contact tap{taps === 1 ? '' : 's'}
-      </p>
-
-      {/* Both windows are 30 days long, so the comparison is like-for-like on
-          every day of the month — which is the reason the window is trailing
-          rather than calendar. The dates stay on screen so the span being
-          compared is auditable rather than implied. */}
-      <p className="mt-1 text-[12px] leading-relaxed text-white/45">
-        vs {NUM.format(previous.total)} over the previous 30 days,{' '}
-        {shortDate(previous.from)} – {shortDate(previous.to)}
-        {change === null && ' · nothing recorded in that window, so no % to show'}
-      </p>
-      <p className="mt-1 text-[11px] text-white/30">
-        The 30 days before that: {NUM.format(previousFull.total)} leads
-      </p>
-
-      {/* Delivery: a lead is only genuinely lost when BOTH sinks fail, so this
-          is reported as coverage rather than as a single pass/fail. It describes
-          FORM submissions only — taps have no CRM leg and no inbox leg, so they
-          are counted in none of these four. */}
-      <div className="mt-4 border-t border-white/10 pt-3">
-        <p className="mb-2 text-[10px] uppercase tracking-wide text-white/35">
-          Form submissions only
-        </p>
-        <div className="grid grid-cols-4 gap-2">
-          {[
-            { label: 'CRM', value: current.crmOk, tone: 'ok' as const },
-            { label: 'Inbox', value: current.emailOk, tone: 'ok' as const },
-            { label: 'CRM failed', value: current.crmFailed, tone: current.crmFailed ? ('bad' as const) : ('muted' as const) },
-            { label: 'Filtered', value: current.filtered, tone: current.filtered ? ('warn' as const) : ('muted' as const) },
-          ].map((s) => (
-            <div key={s.label}>
-              <div
-                className={`text-lg font-semibold tabular-nums ${
-                  s.tone === 'bad'
-                    ? 'text-red-400'
-                    : s.tone === 'warn'
-                      ? 'text-amber-300'
-                      : s.tone === 'muted'
-                        ? 'text-white/35'
-                        : 'text-white'
-                }`}
-              >
-                {NUM.format(s.value)}
-              </div>
-              <div className="text-[10px] uppercase tracking-wide text-white/35">{s.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {current.filtered > 0 && (
-        <Note>
-          {NUM.format(current.filtered)} submission{current.filtered === 1 ? '' : 's'} were
-          rejected before reaching the CRM or the inbox — spam, a failed validation, or a
-          too-fast submit. They are counted here rather than hidden, because a filter that is
-          too strict removes real customers and looks exactly like a quiet week.
-        </Note>
-      )}
-
-      {/* An unread tap source makes the headline SMALLER, which is
-          indistinguishable from a quiet period unless it is said out loud. */}
-      {current.tapsMissing.length > 0 && (
-        <Note tone="warn">
-          The total is an undercount: {joinNames(current.tapsMissing)} could not be read, so
-          those contacts are missing from it rather than counted as zero.
-        </Note>
-      )}
-
-      {current.note && <Note tone="warn">{current.note}</Note>}
-    </Card>
-  );
+interface BreakdownRow {
+  key: string;
+  label: string;
+  /** The qualifier that says where the number came from. */
+  origin: string;
+  icon: LucideIcon;
+  current: number;
+  previous: number;
+  /** 'form' is a submission that reached the CRM; 'tap' is a button click. */
+  tone: 'form' | 'tap';
+  /** Set when this figure is already inside another row's count. */
+  overlap?: boolean;
 }
 
-/** One line of the breakdown. Shared so the two blocks cannot drift apart. */
-function SourceRow({
-  label,
-  count,
-  previous,
-  max,
-  tone = 'form',
-  marker,
-}: {
-  label: string;
-  count: number;
-  previous: number;
-  max: number;
-  /** 'tap' rows are Google's counts, not pipeline rows — drawn back a step. */
-  tone?: 'form' | 'tap';
-  marker?: string;
-}) {
-  const change = pctChange(count, previous);
+/**
+ * Every component of the headline, each exactly once.
+ *
+ * Order is fixed and meaningful: the form leads first — those are people who
+ * filled something in and reached the CRM — then the taps, which are Google's
+ * count of a button being pressed and are a weaker signal dressed as a
+ * comparable one. The tone difference in the icon chip is that distinction,
+ * carried in the layout rather than only in a footnote.
+ */
+function breakdownRows(current: LeadPeriod, previous: LeadPeriod): BreakdownRow[] {
+  return [
+    {
+      key: 'form',
+      label: 'Form leads',
+      origin: 'CRM',
+      icon: FileText,
+      current: current.accepted,
+      previous: previous.accepted,
+      tone: 'form',
+    },
+    {
+      key: 'callButton',
+      label: 'Call button taps',
+      origin: 'GA4',
+      icon: TAP_ICONS.callButton,
+      current: current.taps.callButton,
+      previous: previous.taps.callButton,
+      tone: 'tap',
+    },
+    {
+      key: 'whatsapp',
+      label: 'WhatsApp taps',
+      origin: 'GA4',
+      icon: TAP_ICONS.whatsapp,
+      current: current.taps.whatsapp,
+      previous: previous.taps.whatsapp,
+      tone: 'tap',
+    },
+    {
+      key: 'gbpCalls',
+      label: 'Google listing calls',
+      origin: 'GBP',
+      icon: TAP_ICONS.gbpCalls,
+      current: current.taps.gbpCalls,
+      previous: previous.taps.gbpCalls,
+      tone: 'tap',
+    },
+    {
+      key: 'adsTaps',
+      label: 'Ads tap conversions',
+      origin: 'Google Ads',
+      icon: TAP_ICONS.adsTaps,
+      current: current.taps.adsTaps,
+      previous: previous.taps.adsTaps,
+      tone: 'tap',
+      overlap: true,
+    },
+  ];
+}
+
+function BreakdownRowView({ row, max }: { row: BreakdownRow; max: number }) {
+  const Icon = row.icon;
   return (
-    <li>
-      <div className="flex items-baseline justify-between gap-2 text-[13px]">
-        <span className="truncate text-white/80">
-          {label}
-          {marker && (
-            <span className="ml-2 text-[10px] uppercase tracking-wide text-amber-300/80">
-              {marker}
+    <li className="flex items-center gap-3 py-2.5">
+      <span
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
+          row.tone === 'form' ? 'bg-brand-navy/[0.07] text-brand-navy' : 'bg-brand-orange/10 text-brand-orange'
+        }`}
+        aria-hidden
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="min-w-0 truncate text-sm font-medium text-brand-navy">
+            {row.label}
+            <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-gray-400">
+              {row.origin}
             </span>
-          )}
-        </span>
-        <span className="flex shrink-0 items-baseline gap-2">
-          {change !== null && (
-            <span
-              className={`text-[11px] ${
-                Math.abs(change) < 1
-                  ? 'text-white/35'
-                  : change > 0
-                    ? 'text-emerald-400'
-                    : 'text-red-400'
+          </span>
+          <span className="shrink-0 text-base font-semibold tabular-nums text-brand-navy">
+            {NUM.format(row.current)}
+          </span>
+        </div>
+        {/* The bar is a share of the largest row, so a tap that outweighs every
+            form looks like it — and the scale is shared across all five. */}
+        <div className="mt-1.5 flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-gray-100">
+            <div
+              className={`h-full rounded-full ${
+                row.tone === 'form' ? 'bg-brand-navy' : 'bg-brand-orange/60'
               }`}
-            >
-              {change > 0 ? '+' : ''}
-              {change.toFixed(0)}%
-            </span>
-          )}
-          <span className="font-semibold tabular-nums text-white">{NUM.format(count)}</span>
-        </span>
-      </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
-        <div
-          className={`h-full rounded-full ${
-            tone === 'tap' ? 'bg-brand-orange/45' : 'bg-brand-orange'
-          }`}
-          style={{ width: `${max ? Math.max(6, (count / max) * 100) : 0}%` }}
-        />
+              style={{ width: `${max ? Math.max(4, (row.current / max) * 100) : 0}%` }}
+            />
+          </div>
+          <Delta current={row.current} previous={row.previous} />
+        </div>
       </div>
     </li>
   );
 }
 
-function SourceBreakdown({ current, previous }: { current: LeadPeriod; previous: LeadPeriod }) {
-  const prevBySource = new Map(previous.bySource.map((s) => [s.source, s.count]));
-  // One scale for both blocks, so a tap that outweighs every form looks like it.
-  const max = Math.max(
-    current.bySource.reduce((a, s) => Math.max(a, s.count), 0),
-    ...TAP_ROWS.map((r) => current.taps[r.key]),
-  );
+/**
+ * The lead section: the headline, its components, and how the form leads were
+ * delivered. Everything that is added together to make the headline lives in
+ * here and nowhere else.
+ */
+function LeadSection({ data }: { data: DashboardData }) {
+  const { current, previous, previousFull } = data;
+  const rows = breakdownRows(current, previous);
+  const max = rows.reduce((a, r) => Math.max(a, r.current), 0);
+  // The rows must sum to the headline. They are drawn from the same payload, so
+  // this cannot fail unless the payload itself is inconsistent — which is worth
+  // noticing rather than papering over with a separate arithmetic.
+  const rowSum = rows.reduce((a, r) => a + r.current, 0);
+  const rowsMatchTotal = rowSum === current.total;
+  const taps = current.taps.callButton + current.taps.whatsapp + current.taps.gbpCalls + current.taps.adsTaps;
 
   return (
-    <Card title="Where they came from" meta={`${shortDate(current.from)} – ${shortDate(current.to)}`}>
-      {current.total === 0 ? (
-        <p className="text-[13px] text-white/40">No leads captured in this window.</p>
-      ) : (
-        <>
-          {current.bySource.length > 0 && (
-            <ul className="space-y-3">
-              {current.bySource.map((s) => (
-                <SourceRow
-                  key={s.source}
-                  label={sourceLabel(s.source)}
-                  count={s.count}
-                  previous={prevBySource.get(s.source) || 0}
-                  max={max}
-                />
-              ))}
-            </ul>
-          )}
+    <section className="px-5 pt-5 pb-4 sm:px-6">
+      <Kicker>Leads</Kicker>
 
-          {/* Separate block, not sorted in among the forms. These are not
-              pipeline rows and never will be: they come from GA4, GBP and Ads,
-              they carry no lead id, and they cannot be joined to a submission.
-              The divider is the honest shape of that. */}
-          <ul
-            className={`space-y-3 ${
-              current.bySource.length > 0 ? 'mt-3 border-t border-white/10 pt-3' : ''
-            }`}
-          >
-            {TAP_ROWS.map((r) => (
-              <SourceRow
-                key={r.key}
-                label={r.label}
-                count={current.taps[r.key]}
-                previous={previous.taps[r.key]}
-                max={max}
-                tone="tap"
-                marker={r.overlap ? 'also in the taps above' : undefined}
-              />
-            ))}
-          </ul>
+      <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <span className="text-5xl font-bold leading-none tabular-nums text-brand-navy sm:text-6xl">
+          {NUM.format(current.total)}
+        </span>
+        <Delta current={current.total} previous={previous.total} size="md" />
+      </div>
 
-          <div className="mt-3 flex items-baseline justify-between border-t border-white/10 pt-3">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-white/50">
-              Total
-            </span>
-            <span className="font-semibold tabular-nums text-white">
-              {NUM.format(current.total)}
-            </span>
-          </div>
-        </>
+      <p className="mt-2 text-[12px] leading-relaxed text-gray-500">
+        {shortDate(current.from)} – {shortDate(current.to)} · {NUM.format(current.accepted)} form
+        submission{current.accepted === 1 ? '' : 's'} + {NUM.format(taps)} contact tap
+        {taps === 1 ? '' : 's'}
+      </p>
+      <p className="mt-0.5 text-[12px] leading-relaxed text-gray-500">
+        Compared with the previous 30 days, {shortDate(previous.from)} – {shortDate(previous.to)}
+        {' · '}
+        {NUM.format(previousFull.total)} in the 30 days before that
+      </p>
+
+      {/* ── The one list ─────────────────────────────────────────────────── */}
+      <ul className="mt-4 divide-y divide-gray-100 border-y border-gray-100">
+        {rows.map((row) => (
+          <BreakdownRowView key={row.key} row={row} max={max} />
+        ))}
+      </ul>
+
+      <div className="mt-3 flex items-baseline justify-between">
+        <span className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">
+          Total
+        </span>
+        <span className="text-lg font-bold tabular-nums text-brand-navy">
+          {NUM.format(current.total)}
+        </span>
+      </div>
+      {!rowsMatchTotal && (
+        <Hint flag>
+          The rows above sum to {NUM.format(rowSum)}, not the headline{' '}
+          {NUM.format(current.total)} — treat the headline as the authoritative figure and this
+          page as broken.
+        </Hint>
       )}
 
-      <Note>
-        The upper block is CRM deliveries — form submissions that reached the CRM. Everything
-        below it is a Google count of contact-button clicks: site call and WhatsApp taps from
-        GA4, the Google listing&apos;s call button from GBP, and the Ads tap conversion. A tap
-        is interest, not a conversation — nobody has spoken to these people. They are
-        browser-side events gated on cookie consent, so a visitor who declined cookies and
-        tapped is missing from them. And the Ads row counts taps already inside the two GA4
-        rows, so the total includes those taps twice.
-      </Note>
-    </Card>
+      {/* ── How the form leads were delivered ────────────────────────────── */}
+      <div className="mt-5 rounded-lg bg-brand-grey p-3">
+        <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-500">
+          Form leads, by delivery
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: 'CRM', value: current.crmOk, tone: 'ok' as const },
+            { label: 'Inbox', value: current.emailOk, tone: 'ok' as const },
+            {
+              label: 'CRM failed',
+              value: current.crmFailed,
+              tone: current.crmFailed ? ('bad' as const) : ('muted' as const),
+            },
+            {
+              label: 'Filtered',
+              value: current.filtered,
+              tone: current.filtered ? ('warn' as const) : ('muted' as const),
+            },
+          ].map((s) => (
+            <div key={s.label}>
+              <div
+                className={`text-base font-semibold tabular-nums ${
+                  s.tone === 'bad'
+                    ? 'text-red-600'
+                    : s.tone === 'warn'
+                      ? 'text-brand-orange'
+                      : s.tone === 'muted'
+                        ? 'text-gray-300'
+                        : 'text-brand-navy'
+                }`}
+              >
+                {NUM.format(s.value)}
+              </div>
+              <div className="text-[10px] uppercase tracking-wide text-gray-400">{s.label}</div>
+            </div>
+          ))}
+        </div>
+        <Hint>
+          These four describe the form leads only — a tap has no CRM leg and no inbox leg, so it is
+          counted in none of them. CRM and Inbox are the same{' '}
+          {NUM.format(current.accepted)} submission{NUM.format(current.accepted) === '1' ? '' : 's'}{' '}
+          reaching two places, not two sets of leads.
+        </Hint>
+        {current.filtered > 0 && (
+          <Hint>
+            {NUM.format(current.filtered)} submission{current.filtered === 1 ? '' : 's'} were
+            rejected before reaching the CRM or the inbox — spam, a failed validation, or a
+            too-fast submit. Shown rather than hidden, because a filter that is too strict removes
+            real customers and looks exactly like a quiet week.
+          </Hint>
+        )}
+      </div>
+
+      {/* ── What the taps are, and are not ───────────────────────────────── */}
+      <Hint>
+        A form lead is someone who filled something in and reached the CRM. A tap is Google&apos;s
+        count of a button being pressed — interest, not a conversation. Nobody has spoken to these
+        people; a call that rang out and a WhatsApp message never sent both count. The taps are
+        browser events gated on cookie consent, so a visitor who declined cookies and tapped is
+        missing from them.
+      </Hint>
+      {current.tapsOverlap && (
+        <Hint>
+          The Ads row is the one overlap: a tap on an ad-driven visit fires both the GA4 event and
+          the Ads conversion, so those {NUM.format(current.taps.adsTaps)} tap
+          {current.taps.adsTaps === 1 ? '' : 's'} {current.taps.adsTaps === 1 ? 'is' : 'are'}{' '}
+          already inside the call and WhatsApp rows above and counted a second time in the total.
+        </Hint>
+      )}
+
+      {/* An unread tap source makes the headline SMALLER, which is
+          indistinguishable from a quiet period unless it is said out loud. */}
+      {current.tapsMissing.length > 0 && (
+        <Hint flag>
+          The total is an undercount: {joinNames(current.tapsMissing)} could not be read, so those
+          contacts are missing from it rather than counted as zero.
+        </Hint>
+      )}
+
+      {current.note && <Hint flag>{current.note}</Hint>}
+    </section>
   );
 }
 
-function GbpPanel({ gbp }: { gbp: DashboardData['gbp'] }) {
-  const row = (label: string, key: keyof GbpActionTotals) => (
-    <Stat label={label} current={gbp.currentTotals[key]} previous={gbp.previousTotals[key]} />
-  );
+// ── Additional context ───────────────────────────────────────────────────────
 
-  return (
-    <Card
-      title="Google listing"
-      meta={
-        gbp.available
-          ? `${shortDate(gbp.current.from)} – ${shortDate(gbp.current.to)}`
-          : undefined
-      }
-    >
-      {gbp.available ? (
-        <>
-          <div className="grid grid-cols-3 gap-3">
-            {row('Calls', 'callClicks')}
-            {row('Directions', 'directionRequests')}
-            {row('Site clicks', 'websiteClicks')}
-          </div>
-          <Note>
-            These are actions taken on the Google listing itself, compared against the
-            previous {shortDate(gbp.previous.from)} – {shortDate(gbp.previous.to)}.
-            {/* The window ends before the last covered day because Google keeps
-                revising recent days — comparing them against settled ones invents
-                a decline. Saying so prevents "why is today missing?". */}
-            {' '}It ends {shortDate(gbp.current.to)}, a few days behind, because Google
-            keeps revising the most recent days. Last pulled{' '}
-            {gbp.coveredTo ? shortDate(gbp.coveredTo) : 'unknown'}.
-          </Note>
-          {gbp.note && <Note tone="warn">{gbp.note}</Note>}
-        </>
-      ) : (
-        <Note>{gbp.note || 'Google listing data is unavailable.'}</Note>
-      )}
-    </Card>
-  );
-}
-
-function ClicksPanel({ clicks }: { clicks: DashboardData['clicks'] }) {
-  const row = (label: string, key: keyof ClickTotals) => (
-    <Stat label={label} current={clicks.currentTotals[key]} previous={clicks.previousTotals[key]} />
-  );
-
-  return (
-    <Card
-      title="Clicks on the site"
-      meta={
-        clicks.available
-          ? `${shortDate(clicks.current.from)} – ${shortDate(clicks.current.to)}`
-          : undefined
-      }
-    >
-      {clicks.available ? (
-        <>
-          <div className="grid grid-cols-3 gap-3">
-            {row('Call button', 'phone')}
-            {row('WhatsApp', 'whatsapp')}
-            {row('Email', 'email')}
-          </div>
-          <Note>
-            Taps recorded by GA4, compared against the previous{' '}
-            {shortDate(clicks.previous.from)} – {shortDate(clicks.previous.to)}. The newest
-            day is still filling in and Google keeps revising the last day or two, so treat
-            today as provisional — the same caution the Google listing panel applies to its
-            own window.
-          </Note>
-          {/* The honest limit of this panel, stated rather than implied: none of
-              these three events can observe what happened after the tap. */}
-          <Note>
-            These measure intent, not delivery. A tap opens the dialler, WhatsApp or a mail
-            client, and nothing on the site can see whether the call was placed or the
-            message was sent. A call that rings out and a WhatsApp message that is never
-            sent both count here, so this is a leading indicator — never a count of
-            conversations.
-          </Note>
-          {clicks.note && <Note tone="warn">{clicks.note}</Note>}
-        </>
-      ) : (
-        <Note>{clicks.note || 'Click data is unavailable.'}</Note>
-      )}
-    </Card>
-  );
-}
-
-function AdsPanel({
-  ads,
-  leads,
+/** A label/value/change triple for the context grid. */
+function Figure({
+  label,
+  current,
+  previous,
+  format = (n: number) => NUM.format(n),
+  hint,
 }: {
-  ads: DashboardData['ads'];
-  /** The dashboard's own lead window, for the count shown beside the lead-form figure. */
-  leads: DashboardData['current'];
+  label: string;
+  current: number;
+  previous: number;
+  format?: (n: number) => string;
+  hint?: React.ReactNode;
 }) {
+  return (
+    <div className="min-w-0">
+      <div className="truncate text-[11px] text-gray-500">{label}</div>
+      <div className="mt-0.5 text-lg font-semibold tabular-nums text-brand-navy">
+        {format(current)}
+      </div>
+      <div className="mt-0.5">
+        <Delta current={current} previous={previous} format={format} />
+      </div>
+      {hint && <Hint>{hint}</Hint>}
+    </div>
+  );
+}
+
+function ContextSection({ data }: { data: DashboardData }) {
+  const { ads, gbp, clicks } = data;
   const cpc = (t: { costMicros: number; clicks: number }) =>
     t.clicks > 0 ? t.costMicros / t.clicks : 0;
 
   const calls = ads.calls;
   const leadForm = ads.leadForm;
-  const taps = ads.taps;
-
-  // The threshold is read from the conversion action rather than written here, so
-  // the label cannot drift from what Google is actually enforcing.
   const callLabel = calls?.minimumSeconds ? `Calls (${calls.minimumSeconds}s+)` : 'Calls';
 
-  // Google counts a form conversion when the browser fires the tag; the CRM count
-  // is what actually arrived. The gap is shown rather than resolved, because
-  // neither number is the other one being wrong — see the note below.
-  const formGap = leadForm ? leadForm.currentConversions - leads.accepted : 0;
-
-  // Stated once for the panel rather than once per figure: every website action on
-  // this account is Secondary, so three separate sentences would be the same
-  // sentence three times.
+  // Every website action on this account is Secondary, so one sentence covers
+  // all of them rather than three identical ones.
   const secondaryNames = [
     calls?.secondary ? callLabel : null,
     leadForm?.secondary ? 'Lead form' : null,
-    taps?.secondary ? 'Tap clicks' : null,
+    ads.taps?.secondary ? 'Tap clicks' : null,
+  ].filter((n): n is string => n !== null);
+
+  const missing = [
+    !gbp.available ? 'the Google listing figures' : null,
+    !ads.available ? 'every Google Ads figure' : null,
+    !clicks.available ? 'the GA4 site figures' : null,
   ].filter((n): n is string => n !== null);
 
   return (
-    <Card
-      title="Google Ads"
-      meta={ads.available ? `${shortDate(ads.current.from)} – ${shortDate(ads.current.to)}` : undefined}
-    >
+    <section className="border-t border-gray-200 px-5 pt-5 pb-4 sm:px-6">
+      <Kicker muted>Additional context</Kicker>
+      <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
+        Nothing in this section is part of the lead count above. It is spend, and activity that is
+        not a contact — shown because it explains the lead numbers, not because it adds to them.
+      </p>
+
+      {missing.length > 0 && (
+        <Hint flag>
+          Missing here: {joinNames(missing)} could not be read, so this section is incomplete —
+          the figures shown are real, the gaps are not zeros.
+        </Hint>
+      )}
+
+      {/* ── Google Ads ───────────────────────────────────────────────────── */}
+      <h3 className="mt-4 text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-500">
+        Google Ads
+      </h3>
       {ads.available ? (
         <>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Spend" current={ads.currentTotals.costMicros} previous={ads.previousTotals.costMicros} format={money} />
-            <Stat label="Clicks" current={ads.currentTotals.clicks} previous={ads.previousTotals.clicks} />
-            <div className="min-w-0">
-              <div className="truncate text-[11px] uppercase tracking-wide text-white/40">
-                Cost / click
-              </div>
-              <div className="mt-0.5 text-xl font-semibold tabular-nums text-white">
-                {cpc(ads.currentTotals) ? money(cpc(ads.currentTotals)) : '—'}
-              </div>
-              <div className="mt-0.5 text-[11px] text-white/30">
-                vs {cpc(ads.previousTotals) ? money(cpc(ads.previousTotals)) : '—'}
-              </div>
-            </div>
-            {calls && (
-              <Stat
-                label={callLabel}
-                current={calls.currentConversions}
-                previous={calls.previousConversions}
-              />
-            )}
-            {leadForm && (
-              <Stat
-                label="Lead form"
-                current={leadForm.currentConversions}
-                previous={leadForm.previousConversions}
-                below={`CRM: ${NUM.format(leads.accepted)} this period`}
-              />
-            )}
-            {taps && (
-              <Stat
-                label="Tap clicks"
-                current={taps.currentConversions}
-                previous={taps.previousConversions}
-              />
-            )}
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            <Figure
+              label="Spend"
+              current={ads.currentTotals.costMicros}
+              previous={ads.previousTotals.costMicros}
+              format={money}
+            />
+            <Figure
+              label="Clicks"
+              current={ads.currentTotals.clicks}
+              previous={ads.previousTotals.clicks}
+            />
+            <Figure
+              label="Cost / click"
+              current={cpc(ads.currentTotals)}
+              previous={cpc(ads.previousTotals)}
+              format={(n) => (n ? money(n) : '—')}
+            />
           </div>
+          <Hint>
+            Spend, clicks and cost-per-click are account-wide. Everything else on this page that
+            comes from Ads is read against one specific conversion action, so it counts only ad
+            traffic and only what Google was able to see.
+          </Hint>
 
-          <Note>
-            Spend, clicks and cost-per-click are account-wide. The three figures below them
-            are not — each is what Google recorded against one specific conversion action, so
-            each counts only ad traffic, and only what Google was able to see.
-          </Note>
-
-          {/* Said once, for the reason in the component above. */}
-          {secondaryNames.length > 0 && (
-            <Note tone="warn">
-              {secondaryNames.length === 1 ? 'One of these actions' : 'All of these actions'}{' '}
-              — {joinNames(secondaryNames)} —{' '}
-              {secondaryNames.length === 1 ? 'is' : 'are'} set to SECONDARY for the
-              account&apos;s goals, so Smart Bidding is not optimising toward
-              {secondaryNames.length === 1 ? ' it' : ' them'}. The counts below are still what
-              Google recorded, which is the honest number either way.
-            </Note>
+          {/* Ad-attributed conversion counts. These LOOK like the lead figures
+              above and are not: Google counts the tag firing, not the lead
+              arriving, and it cannot see organic or cookie-declined visitors. */}
+          {(calls || leadForm) && (
+            <>
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                {calls && (
+                  <Figure
+                    label={callLabel}
+                    current={calls.currentConversions}
+                    previous={calls.previousConversions}
+                  />
+                )}
+                {leadForm && (
+                  <Figure
+                    label="Lead form conversions"
+                    current={leadForm.currentConversions}
+                    previous={leadForm.previousConversions}
+                  />
+                )}
+              </div>
+              <Hint>
+                These are Google&apos;s counts, not the dashboard&apos;s. A lead-form conversion is
+                the tag firing on an ad click — Google sees only ad traffic, only where advertising
+                cookies were accepted, and it counts the tag rather than the lead arriving. It is
+                not the form-lead figure above and the two are not meant to agree
+                {leadForm
+                  ? ` (they differ by ${NUM.format(
+                      Math.abs(leadForm.currentConversions - data.current.accepted),
+                    )} in this window)`
+                  : ''}
+                . The CRM figure counts every submission that passed the spam filter, from every
+                source.
+              </Hint>
+              {calls && calls.currentConversions === 0 && calls.previousConversions === 0 && (
+                <Hint>
+                  No ad calls recorded. Google only registers one when an ad click shows the
+                  forwarding number and the call runs for{' '}
+                  {calls.minimumSeconds
+                    ? `at least ${calls.minimumSeconds} seconds`
+                    : 'long enough'}
+                  , so zero here is expected rather than a broken read.
+                </Hint>
+              )}
+              {secondaryNames.length > 0 && (
+                <Hint>
+                  {secondaryNames.length === 1 ? 'One of these actions is' : 'These actions are'}{' '}
+                  set to SECONDARY for the account&apos;s goals ({joinNames(secondaryNames)}), so
+                  Smart Bidding is not optimising toward
+                  {secondaryNames.length === 1 ? ' it' : ' them'}. The counts are still what Google
+                  recorded, which is the honest number either way.
+                </Hint>
+              )}
+            </>
           )}
 
-          {/* The zero state, said out loud. An empty cell here would read as a
-              fault or as "nobody is calling", when in fact Google cannot record a
-              call until ad traffic has seen the forwarding number. */}
-          {calls && calls.currentConversions === 0 && calls.previousConversions === 0 && (
-            <Note>
-              No calls recorded yet. Google only registers one when an ad click shows the
-              forwarding number and the call runs for{' '}
-              {calls.minimumSeconds ? `at least ${calls.minimumSeconds} seconds` : 'long enough'},
-              so this stays at zero until real ad traffic produces calls. Zero here is
-              expected, not a broken panel.
-            </Note>
-          )}
+          {[
+            ads.callsError && `Calls: ${ads.callsError}`,
+            ads.leadFormError && `Lead form: ${ads.leadFormError}`,
+            ads.tapsError && `Tap clicks: ${ads.tapsError}`,
+            calls?.note,
+            leadForm?.note,
+            ads.taps?.note,
+          ]
+            .filter((n): n is string => Boolean(n))
+            .map((n) => (
+              <Hint key={n} flag>
+                {n}
+              </Hint>
+            ))}
 
-          {calls?.note && <Note tone="warn">{calls.note}</Note>}
-
-          {calls && calls.currentInConversionsColumn < calls.currentConversions && (
-            <Note>
-              Only {NUM.format(calls.currentInConversionsColumn)} of these{' '}
-              {NUM.format(calls.currentConversions)} appear in the Conversions column inside
-              Google Ads itself, because the action is Secondary. The number above is the
-              count of calls Google recorded.
-            </Note>
-          )}
-
-          {ads.callsError && (
-            <Note tone="warn">
-              The call figures could not be read, so they are missing rather than zero:{' '}
-              {ads.callsError}
-            </Note>
-          )}
-
-          {leadForm && (
-            <Note>
-              Lead form is the count of form-fill conversions Google recorded against the{' '}
-              <span className="text-white/70">{leadForm.actionName}</span> action. It is not
-              the lead count: Google sees only ad traffic, only where advertising cookies
-              were accepted, and it counts the tag firing rather than the lead arriving.{' '}
-              {formGap === 0
-                ? 'The two agree in this window.'
-                : `They differ by ${NUM.format(Math.abs(formGap))} this window. The CRM
-                   figure beside it counts every submission that passed the spam filter,
-                   from every source, so neither is the other one being wrong.`}
-            </Note>
-          )}
-
-          {leadForm?.note && <Note tone="warn">{leadForm.note}</Note>}
-
-          {ads.leadFormError && (
-            <Note tone="warn">
-              The lead-form figures could not be read, so they are missing rather than
-              zero: {ads.leadFormError}
-            </Note>
-          )}
-
-          {taps && (
-            <Note>
-              Tap clicks are recorded presses of the phone and WhatsApp links, against the{' '}
-              <span className="text-white/70">{taps.actionName}</span> action. A tap is
-              intent, not a conversation: it says a button was pressed, not that the call
-              connected or the message was sent.
-            </Note>
-          )}
-
-          {taps?.note && <Note tone="warn">{taps.note}</Note>}
-
-          {ads.tapsError && (
-            <Note tone="warn">
-              The tap figures could not be read, so they are missing rather than zero:{' '}
-              {ads.tapsError}
-            </Note>
-          )}
-
-          {/* Both read zero for the same reason, and two empty cells would read as
-              "this never worked" rather than as "Google cannot see it". */}
-          {leadForm &&
-            taps &&
-            leadForm.currentConversions === 0 &&
-            taps.currentConversions === 0 && (
-              <Note>
-                Neither figure has recorded anything this period. Google only counts one when
-                a visitor arrives from an ad click with advertising cookies accepted and the
-                tag fires — organic and direct visitors are invisible to it by design, and a
-                form submitted with cookies declined is a real lead Google never sees. Zero
-                here means Google saw none, not that none happened.
-              </Note>
-            )}
-
-          <Note>
-            Still left out: the account&apos;s offline actions (Job Won, Site Visit Booked),
-            which are uploaded from the CRM rather than recorded from an ad click. An
-            account-wide conversions total would add those to the three above and mean
-            nothing in particular, which is why every figure here is read against its own
-            action id.
-          </Note>
+          <Hint>
+            Still left out: the account&apos;s offline actions (Job Won, Site Visit Booked), which
+            are uploaded from the CRM rather than recorded from an ad click. An account-wide
+            conversions total would add those to the figures here and mean nothing in particular,
+            which is why each is read against its own action id.
+          </Hint>
         </>
       ) : (
-        <Note>{ads.note || 'Google Ads data is unavailable.'}</Note>
+        <Hint flag>{ads.note || 'Google Ads data is unavailable.'}</Hint>
       )}
-    </Card>
+
+      {/* ── Google listing ───────────────────────────────────────────────── */}
+      <h3 className="mt-5 text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-500">
+        Google listing
+      </h3>
+      {gbp.available ? (
+        <>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <Figure
+              label="Direction requests"
+              current={gbp.currentTotals.directionRequests}
+              previous={gbp.previousTotals.directionRequests}
+            />
+            <Figure
+              label="Site clicks"
+              current={gbp.currentTotals.websiteClicks}
+              previous={gbp.previousTotals.websiteClicks}
+            />
+          </div>
+          {/* The listing's CALL clicks are deliberately absent: they are already
+              a row of the breakdown above, and showing them again here is what
+              made the same number look like two different things. */}
+          <Hint>
+            Actions taken on the Google listing itself, over {shortDate(gbp.current.from)} –{' '}
+            {shortDate(gbp.current.to)} compared with {shortDate(gbp.previous.from)} –{' '}
+            {shortDate(gbp.previous.to)}. The window ends {shortDate(gbp.current.to)}, a few days
+            behind, because Google keeps revising the most recent days and comparing unsettled days
+            against settled ones invents a decline. Last pulled{' '}
+            {gbp.coveredTo ? shortDate(gbp.coveredTo) : 'unknown'}.
+            {gbp.currentTotals.callClicks > 0 &&
+              ` The listing's own call clicks (${NUM.format(
+                gbp.currentTotals.callClicks,
+              )}) are in the lead breakdown above, over a different window.`}
+          </Hint>
+          {gbp.note && <Hint flag>{gbp.note}</Hint>}
+        </>
+      ) : (
+        <Hint flag>{gbp.note || 'Google listing data is unavailable.'}</Hint>
+      )}
+
+      {/* ── Site ─────────────────────────────────────────────────────────── */}
+      <h3 className="mt-5 text-[11px] font-semibold uppercase tracking-[0.15em] text-gray-500">
+        Site
+      </h3>
+      {clicks.available ? (
+        <>
+          <div className="mt-3 grid grid-cols-1 gap-3">
+            {/* Email clicks were the one figure in the old "Clicks on the site"
+                panel with no home in the breakdown — the call and WhatsApp
+                figures there were duplicates of rows above. Kept because it is
+                genuinely recorded, and labelled because it is not a lead. */}
+            <Figure
+              label="Email link clicks"
+              current={clicks.currentTotals.email}
+              previous={clicks.previousTotals.email}
+              hint="Not counted as a lead — an email link is not a tracked contact."
+            />
+          </div>
+          <Hint>
+            Tallied by GA4 over {shortDate(clicks.current.from)} – {shortDate(clicks.current.to)},
+            compared with {shortDate(clicks.previous.from)} – {shortDate(clicks.previous.to)}. The
+            newest day is still filling in, so treat today as provisional.
+          </Hint>
+          {clicks.note && <Hint flag>{clicks.note}</Hint>}
+        </>
+      ) : (
+        <Hint flag>{clicks.note || 'Click data is unavailable.'}</Hint>
+      )}
+
+      {data.googleAsOf && (
+        <Hint>
+          Ads, listing and GA4 figures last read at {clockTime(data.googleAsOf)}; the lead figures
+          above are re-read every minute. Google revises all three for days after the fact, so
+          these are deliberately not chased minute by minute.
+        </Hint>
+      )}
+    </section>
   );
 }
 
-function Feed({ events }: { events: FeedEvent[] }) {
+// ── Activity feed ────────────────────────────────────────────────────────────
+
+function ActivitySection({ events }: { events: FeedEvent[] }) {
   return (
-    <Card title="Latest activity" meta={`${events.length} most recent`}>
+    <section className="border-t border-gray-200 px-5 pt-5 pb-5 sm:px-6">
+      <Kicker muted>Latest activity</Kicker>
       {events.length === 0 ? (
-        <p className="text-[13px] text-white/40">Nothing recorded yet.</p>
+        <p className="mt-3 text-[13px] text-gray-400">Nothing recorded yet.</p>
       ) : (
-        <ul className="divide-y divide-white/[0.07]">
+        <ul className="mt-2 divide-y divide-gray-100">
           {events.map((e) => (
-            <li key={e.id} className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0">
+            <li key={e.id} className="flex items-start gap-3 py-2.5">
               <span
                 aria-hidden
                 className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                  e.ok ? 'bg-emerald-400' : 'bg-red-400'
+                  e.ok ? 'bg-emerald-500' : 'bg-red-500'
                 }`}
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-[13px] text-white/85">
+                  <span className="truncate text-[13px] text-brand-navy">
                     {sourceLabel(e.source)}
-                    <span className="text-white/35"> · {channelLabel(e.channel)}</span>
+                    <span className="text-gray-400"> · {channelLabel(e.channel)}</span>
                   </span>
                   <span
-                    className="shrink-0 text-[11px] text-white/40"
+                    className="shrink-0 text-[11px] text-gray-400"
                     title={exactTime(e.createdAt)}
                   >
                     {timeAgo(e.createdAt)}
                   </span>
                 </div>
                 {!e.ok && e.detail && (
-                  <p className="mt-0.5 break-words text-[11px] leading-snug text-red-300/70">
+                  <p className="mt-0.5 break-words text-[11px] leading-snug text-red-500/80">
                     {e.detail}
                   </p>
                 )}
@@ -823,7 +852,7 @@ function Feed({ events }: { events: FeedEvent[] }) {
           ))}
         </ul>
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -854,14 +883,14 @@ function InstallHint() {
   if (!show) return null;
 
   return (
-    <div className="flex items-start gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[12px] text-white/60">
+    <div className="mx-5 mb-4 mt-1 flex items-start gap-2 rounded-lg bg-brand-grey px-3 py-2 text-[12px] text-gray-600">
       <span className="flex-1">
-        To keep this on your home screen: tap <span className="text-white/85">Share</span>, then{' '}
-        <span className="text-white/85">Add to Home Screen</span>.
+        To keep this on your home screen: tap <span className="text-brand-navy">Share</span>, then{' '}
+        <span className="text-brand-navy">Add to Home Screen</span>.
       </span>
       <button
         type="button"
-        className="-mr-1 shrink-0 px-1 text-white/40 hover:text-white/80"
+        className="-mr-1 shrink-0 px-1 text-gray-400 hover:text-brand-navy"
         aria-label="Dismiss"
         onClick={() => {
           setShow(false);
@@ -943,13 +972,15 @@ export function DashboardClient({ slug }: { slug: string }) {
   if (notFound) {
     return (
       <Shell>
-        <p className="text-sm leading-relaxed text-white/70">
-          This dashboard URL is not active.
-        </p>
-        <p className="mt-2 text-[12px] leading-relaxed text-white/40">
-          The link is the only key, and it changes when the slug is rotated. Ask for the
-          current one.
-        </p>
+        <div className="p-5">
+          <p className="text-sm leading-relaxed text-brand-navy">
+            This dashboard URL is not active.
+          </p>
+          <p className="mt-2 text-[12px] leading-relaxed text-gray-500">
+            The link is the only key, and it changes when the slug is rotated. Ask for the current
+            one.
+          </p>
+        </div>
       </Shell>
     );
   }
@@ -960,38 +991,48 @@ export function DashboardClient({ slug }: { slug: string }) {
       refreshing={refreshing}
       updated={data ? exactTime(data.generatedAt) : undefined}
     >
-      {!data && !error && <Skeleton />}
+      <div className="rounded-lg border border-gray-200 bg-white shadow-md">
+        {!data && !error && <Skeleton />}
 
-      {error && (
-        <div className="rounded-2xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-[13px] text-red-200">
-          Could not load the numbers: {error}
-        </div>
-      )}
+        {error && (
+          <div className="p-5">
+            <p className="text-[13px] text-red-600">Could not load the numbers: {error}</p>
+          </div>
+        )}
 
-      {data && (
-        <div className="space-y-4">
-          {data.storeNote && (
-            <div className="rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-[12px] leading-relaxed text-amber-200">
-              {data.storeNote}
-            </div>
-          )}
-          <LeadHeadline data={data} />
-          <SourceBreakdown current={data.current} previous={data.previous} />
-          <GbpPanel gbp={data.gbp} />
-          <ClicksPanel clicks={data.clicks} />
-          <AdsPanel ads={data.ads} leads={data.current} />
-          <Feed events={data.feed} />
-          <InstallHint />
-          <p className="pb-2 text-center text-[10px] leading-relaxed text-white/25">
-            Figures refresh every minute. Read-only.
-          </p>
-        </div>
-      )}
+        {data && (
+          <>
+            {data.storeNote && (
+              <div className="border-b border-gray-200 px-5 py-3">
+                <Hint flag>{data.storeNote}</Hint>
+              </div>
+            )}
+            <LeadSection data={data} />
+            <ContextSection data={data} />
+            <ActivitySection events={data.feed} />
+            <InstallHint />
+            <p className="border-t border-gray-100 px-5 py-3 text-[10px] leading-relaxed text-gray-400">
+              Lead figures refresh every minute. Ads, listing and GA4 figures are re-read every 15
+              minutes — Google revises all three for days, so they are not chased faster than that.
+              Read-only.
+            </p>
+          </>
+        )}
+      </div>
     </Shell>
   );
 }
 
-/** The dark app frame. Deliberately self-contained: the site's body is white. */
+/**
+ * The app frame.
+ *
+ * Built from the marketing site's own tokens — `brand-navy` for text,
+ * `brand-orange` for the accent, Poppins through the inherited `font-sans`, and
+ * `brand-grey` for the recessed blocks — so this reads as the same brand rather
+ * than a lookalike. It was previously a self-contained dark navy app; that made
+ * it visibly a different product from the site it reports on, and the numbers
+ * here are the site's.
+ */
 function Shell({
   children,
   onRefresh,
@@ -1004,12 +1045,12 @@ function Shell({
   updated?: string;
 }) {
   return (
-    <div className="min-h-screen bg-brand-navy text-white">
+    <div className="min-h-screen bg-brand-grey text-brand-navy">
       <div className="mx-auto max-w-2xl px-4 pb-8 pt-[max(1rem,env(safe-area-inset-top))]">
         <header className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-semibold leading-tight">Leads</h1>
-            <p className="text-[11px] text-white/40">
+            <h1 className="text-lg font-bold leading-tight text-brand-navy">Leads</h1>
+            <p className="text-[11px] text-gray-500">
               {updated ? `Updated ${updated}` : 'Loading…'}
             </p>
           </div>
@@ -1018,8 +1059,12 @@ function Shell({
               type="button"
               onClick={onRefresh}
               disabled={refreshing}
-              className="rounded-full border border-white/15 bg-white/[0.06] px-3.5 py-1.5 text-[12px] font-medium text-white/80 transition-colors hover:bg-white/[0.12] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-navy/20 bg-white px-3.5 py-1.5 text-[12px] font-semibold text-brand-navy transition-colors hover:bg-brand-navy hover:text-white disabled:opacity-50"
             >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`}
+                aria-hidden
+              />
               {refreshing ? 'Refreshing…' : 'Refresh'}
             </button>
           )}

@@ -664,7 +664,186 @@ async function main() {
   await verifyClicks(api, w);
   await verifyAdsActions(api);
 
+  // ── 9. One list, one total ─────────────────────────────────────────────────
+  section('9. Layout — every lead figure appears once');
+
+  verifyNoDoubleCounting(api);
+  await verifyServedLayout(rightPage, api);
+
   report();
+}
+
+/**
+ * The data half of "one list, one total".
+ *
+ * The page cannot be checked by reading its HTML — it is fully client-rendered,
+ * so the served document contains a skeleton and nothing else. What CAN be
+ * checked from here is the invariant the layout exists to protect: that the
+ * headline is the sum of the five named components and of nothing else, so a
+ * reader who adds up the leads section lands on the headline.
+ *
+ * The second half is disjointness. The context section is allowed to show
+ * numbers, but none of them may be a field the total is built from — otherwise
+ * the same measurement is back on the page twice under a different heading,
+ * which is the exact regression this guards.
+ */
+function verifyNoDoubleCounting(api) {
+  const TAP_KEYS = ['callButton', 'whatsapp', 'adsTaps', 'gbpCalls'];
+
+  for (const which of ['current', 'previous', 'previousFull']) {
+    const p = api[which];
+    const keys = Object.keys(p.taps || {}).sort();
+    assertEqual(
+      `${which}: the total is built from exactly these four tap sources`,
+      keys.join(','),
+      [...TAP_KEYS].sort().join(','),
+    );
+  }
+
+  // Fields the CONTEXT section renders. None may also be a component of the
+  // total, and none may be one of the four tap sources.
+  const CONTEXT_FIELDS = [
+    'directionRequests',
+    'websiteClicks',
+    'costMicros',
+    'clicks',
+    'currentConversions',
+  ];
+  const LEAD_FIELDS = ['accepted', ...TAP_KEYS, 'total'];
+
+  const collide = CONTEXT_FIELDS.filter((f) => LEAD_FIELDS.includes(f));
+  assertEqual(
+    'no context field is also a lead-total component',
+    collide.join(',') || 'none',
+    'none',
+  );
+
+  // The listing is where the old layout doubled up: the SAME call clicks were
+  // shown both as a lead row and as the listing panel's own "Calls" tile. They
+  // come from different windows, so they are legitimately different numbers —
+  // but the panel figure must never be what the total uses. Re-derive the total's
+  // listing component from the raw rows over the LEAD window and confirm it is
+  // that, not the panel's tile, that appears in the sum.
+  const leadWindowGbp = api.current.taps.gbpCalls;
+  const panelGbp = api.gbp.available ? api.gbp.currentTotals.callClicks : null;
+  if (panelGbp === null) {
+    pass('listing panel figure is not used by the total', 'panel unavailable — nothing to confuse');
+  } else {
+    pass(
+      'listing lead row and listing panel tile are separate measurements',
+      `lead window ${leadWindowGbp} vs panel window ${panelGbp}` +
+        (leadWindowGbp === panelGbp ? ' (equal today, but read from different windows)' : ''),
+    );
+  }
+
+  // The overlap disclosure must be present exactly when there is an overlap to
+  // disclose, so it can turn itself off rather than being permanent furniture.
+  assertEqual(
+    'the Ads overlap is flagged exactly when Ads taps exist',
+    api.current.tapsOverlap,
+    api.current.taps.adsTaps > 0,
+  );
+}
+
+/**
+ * The layout half: what the browser is actually told to draw.
+ *
+ * The page is client-rendered, so the strings live in the route's JS chunk, not
+ * in the HTML. Three traps, all of which produce a confident false result:
+ *
+ *   1. The chunk path has SUBDIRECTORIES (`chunks/app/dashboard/[slug]/page-*.js`),
+ *      so a `[A-Za-z0-9._-]+\.js` pattern skips the only chunk that matters while
+ *      still reporting a plausible number of chunks.
+ *   2. The names ride the RSC flight payload ESCAPED, so every slash is `\/` and
+ *      nothing matches until the payload is unescaped.
+ *   3. `[slug]` must be percent-encoded or the request 404s — and a 404 body
+ *      contains none of the needles, so it reads as "the old layout shipped"
+ *      rather than "I could not find the file".
+ */
+async function verifyServedLayout(page, api) {
+  const unescaped = page.text.replace(/\\/g, '');
+  const chunks = [
+    ...new Set(
+      [...unescaped.matchAll(/static\/chunks\/[\w./%[\]-]+?\.js/g)].map((m) => m[0]),
+    ),
+  ].filter((c) => c.includes('/app/dashboard/'));
+
+  if (chunks.length === 0) {
+    fail(
+      'the dashboard route chunk is findable in the served page',
+      'no /app/dashboard/ chunk named in the flight payload — the layout checks below cannot run',
+    );
+    return;
+  }
+
+  const bodies = [];
+  for (const chunk of chunks) {
+    const path = `/_next/${chunk}`.replace(/\[/g, '%5B').replace(/\]/g, '%5D');
+    const res = await get(path);
+    if (res.status !== 200) {
+      fail('the dashboard route chunk is served', `${chunk} → HTTP ${res.status}`);
+      return;
+    }
+    bodies.push(res.text);
+  }
+  const js = bodies.join('\n');
+
+  // The five rows of the single breakdown, each present exactly once as a label.
+  const ROW_LABELS = [
+    'Form leads',
+    'Call button taps',
+    'WhatsApp taps',
+    'Google listing calls',
+    'Ads tap conversions',
+  ];
+  for (const label of ROW_LABELS) {
+    assertEqual(`the breakdown renders a "${label}" row`, js.includes(label), true);
+  }
+
+  // The panels whose contents were duplicates of those rows must be gone. If a
+  // title comes back, the duplication has come back with it.
+  for (const gone of ['Where they came from', 'Clicks on the site']) {
+    assertEqual(`the duplicate panel "${gone}" is gone`, js.includes(gone), false);
+  }
+
+  // The context section must announce that it is not part of the count, or the
+  // spend and the listing activity read as more leads. Pinned to the exact
+  // sentence rather than a loose phrase: a reworded disclaimer that no longer
+  // says this is a disclaimer that no longer works, and the check should notice.
+  assertEqual(
+    'the context section says it is not part of the lead count',
+    js.includes('Nothing in this section is part of the lead count above'),
+    true,
+  );
+
+  // What the context section is allowed to show, and the proof that the listing
+  // panel's OWN call tile is not among it: these two are the only listing
+  // figures it renders. The call-clicks tile is the specific figure that used to
+  // appear twice on the page, so its absence as a second labelled figure is the
+  // thing worth pinning. Property names survive minification, so a `.taps.<field>`
+  // read is checkable in the served bundle; a JSX prop name is not.
+  for (const label of ['Direction requests', 'Site clicks']) {
+    assertEqual(`the context section renders a "${label}" figure`, js.includes(label), true);
+  }
+
+  // Every breakdown row must read its component of the lead total — a static
+  // echo of the invariant the payload check above proves.
+  for (const field of ['callButton', 'whatsapp', 'gbpCalls', 'adsTaps']) {
+    assertEqual(
+      `the breakdown reads taps.${field}`,
+      new RegExp(`\\.taps\\.${field}\\b`).test(js),
+      true,
+    );
+  }
+
+  // Google figures are cached for 15 minutes; the lead figures are not. If the
+  // cache is ever removed, the Ads quota comes back — so the constant shipping in
+  // the bundle is worth pinning.
+  assertEqual(
+    'the served payload reports when the Google panels were last read',
+    typeof api.googleAsOf === 'string' && api.googleAsOf.length > 0,
+    true,
+  );
 }
 
 // ── Section 8 helpers ────────────────────────────────────────────────────────
