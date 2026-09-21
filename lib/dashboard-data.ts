@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 import { GBP_LOCATION_ID } from '@/lib/contact';
-import { selectMetrics, toIsoDate } from '@/lib/gbp-performance';
+import { selectMetrics, toIsoDate, type StoredMetricRow } from '@/lib/gbp-performance';
 
 /**
  * lib/dashboard-data.ts
@@ -325,6 +325,47 @@ export interface SourceCount {
   count: number;
 }
 
+/**
+ * Contact taps folded into the lead count, from the three Google sources that
+ * measure them.
+ *
+ * ── Why these are not pipeline rows ──────────────────────────────────────────
+ *
+ * `accepted` counts `ghl` rows in `lead_pipeline_events`: a submission that
+ * actually reached the CRM. A tap writes nothing there. It is a browser-side
+ * event that fires whether or not anything follows it, nothing correlates a tap
+ * to a form, and there is no lead id to group by (see trap 1 in the module
+ * header). So these are contact signals, not customers — the headline sums them
+ * by request, and the card says what is being mixed.
+ *
+ * ── The Ads figure overlaps the two GA4 figures ──────────────────────────────
+ *
+ * One tap calls BOTH `trackPhoneClick` / `trackWhatsAppClick` in lib/tracking.ts,
+ * which pushes the GA4 event and fires the Ads conversion from the same click. So
+ * `adsTaps` is a SUBSET of `callButton + whatsapp`, and summing all four counts
+ * every ad-originated tap twice. That is deliberate — all four were asked for as
+ * separate lines — and `LeadPeriod.tapsOverlap` carries the fact so the card can
+ * mark the row and the verifier can assert it rather than trusting a sentence.
+ *
+ * ── Every figure here is a lower bound ───────────────────────────────────────
+ *
+ * `ad_storage` is denied by default, so a visitor who declines cookies and then
+ * taps is invisible to Google and to every number below. GBP's figures are
+ * additionally revised for about five days after the fact, so the CURRENT
+ * window's `gbpCalls` is incomplete and will rise on its own — see
+ * `LeadPeriod.note`.
+ */
+export interface LeadTapSources {
+  /** GA4 `phone_click` — taps on a tel: link anywhere on the site. */
+  callButton: number;
+  /** GA4 `whatsapp_click` — taps on a WhatsApp link or button. */
+  whatsapp: number;
+  /** GBP `CALL_CLICKS` — taps on the call button in the Google listing. */
+  gbpCalls: number;
+  /** Ads "Phone/WhatsApp Click (Website)". Already inside the two GA4 figures. */
+  adsTaps: number;
+}
+
 export interface LeadPeriod {
   from: string;
   to: string;
@@ -338,7 +379,31 @@ export interface LeadPeriod {
   crmFailed: number;
   /** Rejected before any sink — the silent-drop channel. */
   filtered: number;
+  /**
+   * Form submissions by route. Built from `ghl` rows where `ok` is true, so it
+   * sums to `crmOk` — NOT to `accepted`, and not to `total`. Taps are not in
+   * here: they are not pipeline rows, and the card renders them as their own
+   * block. See `LeadTapSources`.
+   */
   bySource: SourceCount[];
+  /** Contact taps folded in from GA4, GBP and Ads. */
+  taps: LeadTapSources;
+  /**
+   * Tap sources that could not be read, by display name. Non-empty means `total`
+   * is an UNDERCOUNT rather than a measurement — the distinction this file exists
+   * to keep.
+   */
+  tapsMissing: string[];
+  /**
+   * `accepted` + every tap source. NOT interchangeable with `accepted`, which is
+   * CRM deliveries only — the two answer different questions and differ by the
+   * whole tap volume.
+   */
+  total: number;
+  /** `taps.adsTaps` is inside `total` and is also inside the GA4 tap figures. */
+  tapsOverlap: boolean;
+  /** The caveats that apply to `total`, or null when none do. */
+  note: string | null;
 }
 
 /**
@@ -362,6 +427,9 @@ export interface LeadPeriod {
 function summarisePeriod(
   rows: EventRow[],
   window: ComparisonWindow,
+  taps: LeadTapSources,
+  tapsMissing: string[],
+  note: string | null,
 ): LeadPeriod {
   const windowStart = Date.parse(`${window.from}T00:00:00.000Z`);
   const windowEnd = Date.parse(`${window.to}T23:59:59.999Z`);
@@ -396,6 +464,9 @@ function summarisePeriod(
   sourceTally.forEach((count, source) => bySource.push({ source, count }));
   bySource.sort((a, b) => b.count - a.count || a.source.localeCompare(b.source));
 
+  const total =
+    accepted + taps.callButton + taps.whatsapp + taps.gbpCalls + taps.adsTaps;
+
   return {
     from: window.from,
     to: window.to,
@@ -405,6 +476,14 @@ function summarisePeriod(
     crmFailed,
     filtered,
     bySource,
+    taps,
+    tapsMissing,
+    total,
+    // Structural, not data-dependent: the Ads action counts taps the two GA4
+    // events already counted, so it is always inside the total. Carried as a
+    // flag so the card marks the row and the verifier can check it.
+    tapsOverlap: taps.adsTaps > 0,
+    note,
   };
 }
 
@@ -580,6 +659,12 @@ export interface AdsConversionFigures {
   /** Conversions Google recorded (`all_conversions`) in each window. */
   currentConversions: number;
   previousConversions: number;
+  /**
+   * Conversions across the whole of last month, or null when this figure did not
+   * ask for it — see `AdsActionSpec.needsPreviousFull`. Read only for the tap
+   * figure, which the lead total sums.
+   */
+  previousFullConversions: number | null;
   /** How many of those appear in Ads' own Conversions column — zero while Secondary. */
   currentInConversionsColumn: number;
   previousInConversionsColumn: number;
@@ -771,6 +856,16 @@ interface AdsActionSpec {
   allowTypeFallback: boolean;
   /** Whether a zero previous window is an artifact of when the action was created. */
   caveatRecordingStart: boolean;
+  /**
+   * Whether to also count the whole of last month.
+   *
+   * Only the tap figure needs it, and only because the LEAD TOTAL's "all of last
+   * month" line has to be the same measurement as its other two. Nothing on the
+   * Ads panel draws a previousFull figure, so asking for one on the calls and
+   * lead-form figures would buy an API call and a failure mode for a number no
+   * one reads.
+   */
+  needsPreviousFull: boolean;
 }
 
 /**
@@ -787,6 +882,7 @@ const ADS_ACTION_SPECS = {
     selectDuration: true,
     allowTypeFallback: true,
     caveatRecordingStart: false,
+    needsPreviousFull: false,
   },
   leadForm: {
     envName: 'NEXT_PUBLIC_GADS_CONV_ID',
@@ -795,6 +891,7 @@ const ADS_ACTION_SPECS = {
     selectDuration: false,
     allowTypeFallback: false,
     caveatRecordingStart: true,
+    needsPreviousFull: false,
   },
   taps: {
     envName: 'NEXT_PUBLIC_GADS_CLICK_CONV_ID',
@@ -803,6 +900,8 @@ const ADS_ACTION_SPECS = {
     selectDuration: false,
     allowTypeFallback: false,
     caveatRecordingStart: true,
+    // The only figure the lead total reads.
+    needsPreviousFull: true,
   },
 } as const satisfies Record<string, AdsActionSpec>;
 
@@ -1058,9 +1157,17 @@ async function readAdsPanel(now: Date): Promise<AdsPanel> {
       spec: AdsActionSpec,
     ): Promise<{ action: AdsResolvedAction; figures: AdsConversionFigures }> => {
       const action = chooseAdsAction(await candidatesFor(spec), spec);
-      const [cur, prev] = await Promise.all([
+      const [cur, prev, prevFull] = await Promise.all([
         adsActionCounts(token, action.id, windows.current.from, windows.current.to),
         adsActionCounts(token, action.id, windows.previous.from, windows.previous.to),
+        spec.needsPreviousFull
+          ? adsActionCounts(
+              token,
+              action.id,
+              windows.previousFull.from,
+              windows.previousFull.to,
+            )
+          : Promise.resolve(null),
       ]);
       return {
         action,
@@ -1069,6 +1176,7 @@ async function readAdsPanel(now: Date): Promise<AdsPanel> {
           actionName: action.name,
           currentConversions: cur.conversions,
           previousConversions: prev.conversions,
+          previousFullConversions: prevFull ? prevFull.conversions : null,
           currentInConversionsColumn: cur.inConversionsColumn,
           previousInConversionsColumn: prev.inConversionsColumn,
           secondary: !action.inConversionsColumn,
@@ -1146,6 +1254,15 @@ export interface ClicksPanel {
   previous: ComparisonWindow;
   currentTotals: ClickTotals;
   previousTotals: ClickTotals;
+  /**
+   * All of last month, and its totals.
+   *
+   * Read for the LEAD TOTAL's "all of last month" line rather than for anything
+   * this panel draws — that line compares three windows and they have to be the
+   * same measurement. This window is not rendered here.
+   */
+  previousFull: ComparisonWindow;
+  previousFullTotals: ClickTotals;
 }
 
 const ZERO_CLICKS: ClickTotals = { phone: 0, whatsapp: 0, email: 0 };
@@ -1370,6 +1487,8 @@ async function readClicksPanel(now: Date): Promise<ClicksPanel> {
     previous: windows.previous,
     currentTotals: { ...ZERO_CLICKS },
     previousTotals: { ...ZERO_CLICKS },
+    previousFull: windows.previousFull,
+    previousFullTotals: { ...ZERO_CLICKS },
   };
 
   const problem = ga4ConfigProblem();
@@ -1381,9 +1500,12 @@ async function readClicksPanel(now: Date): Promise<ClicksPanel> {
     const propertyId = (process.env.GA4_PROPERTY_ID || '').trim();
 
     const token = await mintServiceAccountToken(key);
-    const [currentTotals, previousTotals] = await Promise.all([
+    // Three windows, not two: the third is only for the lead total's "all of last
+    // month" line, and is not drawn anywhere in this panel.
+    const [currentTotals, previousTotals, previousFullTotals] = await Promise.all([
       ga4ClickCounts(token, propertyId, windows.current.from, windows.current.to),
       ga4ClickCounts(token, propertyId, windows.previous.from, windows.previous.to),
+      ga4ClickCounts(token, propertyId, windows.previousFull.from, windows.previousFull.to),
     ]);
 
     // The comparison is only meaningful once both windows fall inside the period
@@ -1404,6 +1526,7 @@ async function readClicksPanel(now: Date): Promise<ClicksPanel> {
         : null,
       currentTotals,
       previousTotals,
+      previousFullTotals,
     };
   } catch (err) {
     console.error(
@@ -1414,6 +1537,125 @@ async function readClicksPanel(now: Date): Promise<ClicksPanel> {
       note: `Could not read GA4: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
+}
+
+// ── Lead taps ────────────────────────────────────────────────────────────────
+
+const ZERO_TAPS: LeadTapSources = { callButton: 0, whatsapp: 0, gbpCalls: 0, adsTaps: 0 };
+
+interface LeadTapSet {
+  current: LeadTapSources;
+  previous: LeadTapSources;
+  previousFull: LeadTapSources;
+  /** Display names of sources that could not be read. Empty is the healthy case. */
+  missing: string[];
+  /**
+   * Set when the CURRENT window's listing-call figure is still inside Google's
+   * revision period. Applies to that window only — the two earlier ones are long
+   * settled.
+   */
+  settlingNote: string | null;
+}
+
+/**
+ * Gather the four tap sources for the three lead windows.
+ *
+ * ── Why GBP is read again, over different days ───────────────────────────────
+ *
+ * The listing panel deliberately uses its own window: a trailing 30 days ending
+ * `coveredTo - GBP_SETTLE_LAG_DAYS`, so that it only ever shows days Google has
+ * stopped revising. Folding THAT into a month-to-date total would add a fortnight
+ * of the previous month. So the lead total reads `gbp_daily_metrics` over the
+ * LEAD windows instead, and pays for it by being incomplete at the recent end —
+ * which `settlingNote` discloses rather than hides.
+ *
+ * ── Why a missing source is named rather than zeroed ─────────────────────────
+ *
+ * GA4, Ads and GBP fail independently. Any one of them failing would silently
+ * shrink `total`, and a smaller number that looks like a measurement is the
+ * failure this whole file is written against — the same reason `callsError`
+ * exists rather than a `calls: 0`. Each source that could not be read is named in
+ * `missing`, and the card says the total is an undercount.
+ *
+ * The GA4 and Ads components are NOT re-fetched: those two panels already read
+ * the lead windows, so their figures are reused as-is. Only GBP needs its own
+ * read, and one range covers all three windows.
+ */
+async function readLeadTaps(
+  store: SupabaseClient,
+  windows: LeadWindows,
+  clicks: ClicksPanel,
+  ads: AdsPanel,
+  gbp: GbpPanel,
+): Promise<LeadTapSet> {
+  const missing: string[] = [];
+
+  const ga4 = clicks.available ? clicks : null;
+  if (!ga4) missing.push('site call and WhatsApp taps (GA4)');
+
+  const adsTaps = ads.available ? ads.taps : null;
+  if (ads.available && !ads.taps) missing.push('Google Ads tap conversions');
+  // The tap spec always asks for this window, so a null here means the read was
+  // skipped rather than that the figure is genuinely unknown. Zeroing it would
+  // quietly shrink the last-month line, so name it instead.
+  if (adsTaps && adsTaps.previousFullConversions === null) {
+    missing.push('Google Ads tap conversions for last month');
+  }
+
+  // One read for all three windows: previousFull is the earliest, current the
+  // latest, and every row in between belongs to at least one of them.
+  let gbpRows: StoredMetricRow[] = [];
+  let gbpOk = true;
+  try {
+    gbpRows = await selectMetrics(store, windows.previousFull.from, windows.current.to);
+  } catch (err) {
+    gbpOk = false;
+    missing.push('Google listing call clicks (GBP)');
+    console.error(
+      `[dashboard] lead-tap GBP read failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const gbpCallsIn = (w: ComparisonWindow): number => {
+    if (!gbpOk) return 0;
+    let sum = 0;
+    for (const r of gbpRows) {
+      if (r.metric !== 'CALL_CLICKS') continue;
+      if (r.metric_date < w.from || r.metric_date > w.to) continue;
+      sum += r.value;
+    }
+    return sum;
+  };
+
+  const forWindow = (which: keyof LeadWindows): LeadTapSources => ({
+    callButton: ga4 ? ga4[`${which}Totals`].phone : 0,
+    whatsapp: ga4 ? ga4[`${which}Totals`].whatsapp : 0,
+    gbpCalls: gbpCallsIn(windows[which]),
+    adsTaps: adsTaps ? (adsTaps[`${which}Conversions`] ?? 0) : 0,
+  });
+
+  const current = forWindow('current');
+
+  // The listing figure is the one that arrives incomplete. Google revises these
+  // for about five days, so a window running past the last settled day is short
+  // by an unknown amount — and at zero it is indistinguishable from "nobody
+  // rang from the listing", which is exactly when saying so matters most.
+  const lastSettled = gbp.coveredTo
+    ? addDays(gbp.coveredTo, -GBP_SETTLE_LAG_DAYS)
+    : null;
+  const stillSettling = gbpOk && lastSettled !== null && windows.current.to > lastSettled;
+
+  return {
+    current,
+    previous: forWindow('previous'),
+    previousFull: forWindow('previousFull'),
+    missing,
+    settlingNote: stillSettling
+      ? `Google listing call clicks are incomplete for this window: Google revises ` +
+        `listing data for about ${GBP_SETTLE_LAG_DAYS} days after the fact, so the newest ` +
+        `days have not settled yet and this figure will rise on its own.`
+      : null,
+  };
 }
 
 // ── Assembly ─────────────────────────────────────────────────────────────────
@@ -1455,6 +1697,11 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
     crmFailed: 0,
     filtered: 0,
     bySource: [],
+    taps: { ...ZERO_TAPS },
+    tapsMissing: [],
+    total: 0,
+    tapsOverlap: false,
+    note: null,
   });
 
   const store = getDashboardStore();
@@ -1502,6 +1749,8 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
         previous: windows.previous,
         currentTotals: { ...ZERO_CLICKS },
         previousTotals: { ...ZERO_CLICKS },
+        previousFull: windows.previousFull,
+        previousFullTotals: { ...ZERO_CLICKS },
       },
       storeNote:
         'No service-role Supabase credentials are configured, so no figures can be read. ' +
@@ -1548,16 +1797,37 @@ export async function getDashboardData(now = new Date()): Promise<DashboardData>
       'lead_pipeline_events migration.'
     : null;
 
+  const gbp = await readGbpPanel(store, now);
+  const ads = await readAdsPanel(now);
+  const clicks = await readClicksPanel(now);
+
+  // The lead total sums figures the three panels already read, so it has to come
+  // after them. This is the one place the lead count depends on Google, and the
+  // only reason `getDashboardData` cannot answer from the store alone.
+  const tapSet = await readLeadTaps(store, windows, clicks, ads, gbp);
+
   return {
     generatedAt,
     windows,
-    current: summarisePeriod(rows, windows.current),
-    previous: summarisePeriod(rows, windows.previous),
-    previousFull: summarisePeriod(rows, windows.previousFull),
+    current: summarisePeriod(
+      rows,
+      windows.current,
+      tapSet.current,
+      tapSet.missing,
+      tapSet.settlingNote,
+    ),
+    previous: summarisePeriod(rows, windows.previous, tapSet.previous, tapSet.missing, null),
+    previousFull: summarisePeriod(
+      rows,
+      windows.previousFull,
+      tapSet.previousFull,
+      tapSet.missing,
+      null,
+    ),
     feed,
-    gbp: await readGbpPanel(store, now),
-    ads: await readAdsPanel(now),
-    clicks: await readClicksPanel(now),
+    gbp,
+    ads,
+    clicks,
     storeNote,
   };
 }

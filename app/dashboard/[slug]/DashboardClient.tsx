@@ -8,6 +8,7 @@ import type {
   FeedEvent,
   GbpActionTotals,
   LeadPeriod,
+  LeadTapSources,
 } from '@/lib/dashboard-data';
 
 /**
@@ -103,6 +104,35 @@ const SOURCE_LABELS: Record<string, string> = {
 
 function sourceLabel(source: string): string {
   return SOURCE_LABELS[source] || source;
+}
+
+/**
+ * The contact taps counted as leads, in render order.
+ *
+ * These are NOT route labels and never appear in `bySource` — they are Google's
+ * own counts of contact-button clicks, from three separate products, and they
+ * carry fixed labels rather than a `source` column. Kept in one list so the card
+ * and the totals below it cannot drift apart.
+ *
+ * `overlap` marks the one whose taps are already inside another row's figure —
+ * see the note under the breakdown.
+ */
+const TAP_ROWS: Array<{ key: keyof LeadTapSources; label: string; overlap?: boolean }> = [
+  { key: 'callButton', label: 'Call button tap' },
+  { key: 'whatsapp', label: 'WhatsApp tap' },
+  { key: 'adsTaps', label: 'Ads tap conversion', overlap: true },
+  { key: 'gbpCalls', label: 'Google listing call' },
+];
+
+/** Every tap source summed. The verifier re-derives this from the API payload. */
+function tapTotal(taps: LeadTapSources): number {
+  return taps.callButton + taps.whatsapp + taps.gbpCalls + taps.adsTaps;
+}
+
+/** "a", "a and b", "a, b and c" — for naming what could not be read. */
+function joinNames(names: string[]): string {
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 /** Human names for the pipeline channels. */
@@ -231,7 +261,12 @@ function Skeleton() {
 
 function LeadHeadline({ data }: { data: DashboardData }) {
   const { current, previous, previousFull } = data;
-  const change = pctChange(current.accepted, previous.accepted);
+  // The headline is the TOTAL — form submissions plus every contact tap — so
+  // every comparison on this card has to be against the same combined figure.
+  // Comparing a total against a forms-only window would read as growth that did
+  // not happen the day taps were folded in.
+  const change = pctChange(current.total, previous.total);
+  const taps = tapTotal(current.taps);
 
   return (
     <Card
@@ -240,7 +275,7 @@ function LeadHeadline({ data }: { data: DashboardData }) {
     >
       <div className="flex items-end gap-3">
         <div className="text-5xl font-semibold leading-none tabular-nums text-white">
-          {NUM.format(current.accepted)}
+          {NUM.format(current.total)}
         </div>
         {change !== null && (
           <div
@@ -253,43 +288,59 @@ function LeadHeadline({ data }: { data: DashboardData }) {
         )}
       </div>
 
+      {/* What the total is made of, on the card rather than only in the breakdown
+          below: these are two different measurements added together, and a reader
+          who takes the headline as "customers" is reading it wrong. A form is a
+          submission that reached the CRM; a tap is a button click Google counted. */}
+      <p className="mt-2 text-[12px] leading-relaxed text-white/45">
+        {NUM.format(current.accepted)} form submission{current.accepted === 1 ? '' : 's'} ·{' '}
+        {NUM.format(taps)} contact tap{taps === 1 ? '' : 's'}
+      </p>
+
       {/* The comparison is like-for-like on purpose. Comparing a month in
           progress against a whole month always reads as a collapse on the 1st. */}
-      <p className="mt-2 text-[12px] leading-relaxed text-white/45">
-        vs {NUM.format(previous.accepted)} over the same {shortDate(previous.from)} –{' '}
+      <p className="mt-1 text-[12px] leading-relaxed text-white/45">
+        vs {NUM.format(previous.total)} over the same {shortDate(previous.from)} –{' '}
         {shortDate(previous.to)}
-        {change === null && ' · no leads in that window, so no % to show'}
+        {change === null && ' · nothing recorded in that window, so no % to show'}
       </p>
       <p className="mt-1 text-[11px] text-white/30">
-        All of last month: {NUM.format(previousFull.accepted)} leads
+        All of last month: {NUM.format(previousFull.total)} leads
       </p>
 
       {/* Delivery: a lead is only genuinely lost when BOTH sinks fail, so this
-          is reported as coverage rather than as a single pass/fail. */}
-      <div className="mt-4 grid grid-cols-4 gap-2 border-t border-white/10 pt-3">
-        {[
-          { label: 'CRM', value: current.crmOk, tone: 'ok' as const },
-          { label: 'Inbox', value: current.emailOk, tone: 'ok' as const },
-          { label: 'CRM failed', value: current.crmFailed, tone: current.crmFailed ? ('bad' as const) : ('muted' as const) },
-          { label: 'Filtered', value: current.filtered, tone: current.filtered ? ('warn' as const) : ('muted' as const) },
-        ].map((s) => (
-          <div key={s.label}>
-            <div
-              className={`text-lg font-semibold tabular-nums ${
-                s.tone === 'bad'
-                  ? 'text-red-400'
-                  : s.tone === 'warn'
-                    ? 'text-amber-300'
-                    : s.tone === 'muted'
-                      ? 'text-white/35'
-                      : 'text-white'
-              }`}
-            >
-              {NUM.format(s.value)}
+          is reported as coverage rather than as a single pass/fail. It describes
+          FORM submissions only — taps have no CRM leg and no inbox leg, so they
+          are counted in none of these four. */}
+      <div className="mt-4 border-t border-white/10 pt-3">
+        <p className="mb-2 text-[10px] uppercase tracking-wide text-white/35">
+          Form submissions only
+        </p>
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: 'CRM', value: current.crmOk, tone: 'ok' as const },
+            { label: 'Inbox', value: current.emailOk, tone: 'ok' as const },
+            { label: 'CRM failed', value: current.crmFailed, tone: current.crmFailed ? ('bad' as const) : ('muted' as const) },
+            { label: 'Filtered', value: current.filtered, tone: current.filtered ? ('warn' as const) : ('muted' as const) },
+          ].map((s) => (
+            <div key={s.label}>
+              <div
+                className={`text-lg font-semibold tabular-nums ${
+                  s.tone === 'bad'
+                    ? 'text-red-400'
+                    : s.tone === 'warn'
+                      ? 'text-amber-300'
+                      : s.tone === 'muted'
+                        ? 'text-white/35'
+                        : 'text-white'
+                }`}
+              >
+                {NUM.format(s.value)}
+              </div>
+              <div className="text-[10px] uppercase tracking-wide text-white/35">{s.label}</div>
             </div>
-            <div className="text-[10px] uppercase tracking-wide text-white/35">{s.label}</div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
 
       {current.filtered > 0 && (
@@ -300,62 +351,149 @@ function LeadHeadline({ data }: { data: DashboardData }) {
           too strict removes real customers and looks exactly like a quiet week.
         </Note>
       )}
+
+      {/* An unread tap source makes the headline SMALLER, which is
+          indistinguishable from a quiet period unless it is said out loud. */}
+      {current.tapsMissing.length > 0 && (
+        <Note tone="warn">
+          The total is an undercount: {joinNames(current.tapsMissing)} could not be read, so
+          those contacts are missing from it rather than counted as zero.
+        </Note>
+      )}
+
+      {current.note && <Note tone="warn">{current.note}</Note>}
     </Card>
+  );
+}
+
+/** One line of the breakdown. Shared so the two blocks cannot drift apart. */
+function SourceRow({
+  label,
+  count,
+  previous,
+  max,
+  tone = 'form',
+  marker,
+}: {
+  label: string;
+  count: number;
+  previous: number;
+  max: number;
+  /** 'tap' rows are Google's counts, not pipeline rows — drawn back a step. */
+  tone?: 'form' | 'tap';
+  marker?: string;
+}) {
+  const change = pctChange(count, previous);
+  return (
+    <li>
+      <div className="flex items-baseline justify-between gap-2 text-[13px]">
+        <span className="truncate text-white/80">
+          {label}
+          {marker && (
+            <span className="ml-2 text-[10px] uppercase tracking-wide text-amber-300/80">
+              {marker}
+            </span>
+          )}
+        </span>
+        <span className="flex shrink-0 items-baseline gap-2">
+          {change !== null && (
+            <span
+              className={`text-[11px] ${
+                Math.abs(change) < 1
+                  ? 'text-white/35'
+                  : change > 0
+                    ? 'text-emerald-400'
+                    : 'text-red-400'
+              }`}
+            >
+              {change > 0 ? '+' : ''}
+              {change.toFixed(0)}%
+            </span>
+          )}
+          <span className="font-semibold tabular-nums text-white">{NUM.format(count)}</span>
+        </span>
+      </div>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div
+          className={`h-full rounded-full ${
+            tone === 'tap' ? 'bg-brand-orange/45' : 'bg-brand-orange'
+          }`}
+          style={{ width: `${max ? Math.max(6, (count / max) * 100) : 0}%` }}
+        />
+      </div>
+    </li>
   );
 }
 
 function SourceBreakdown({ current, previous }: { current: LeadPeriod; previous: LeadPeriod }) {
   const prevBySource = new Map(previous.bySource.map((s) => [s.source, s.count]));
-  const max = current.bySource.reduce((a, s) => Math.max(a, s.count), 0);
+  // One scale for both blocks, so a tap that outweighs every form looks like it.
+  const max = Math.max(
+    current.bySource.reduce((a, s) => Math.max(a, s.count), 0),
+    ...TAP_ROWS.map((r) => current.taps[r.key]),
+  );
 
   return (
     <Card title="Where they came from" meta={`${shortDate(current.from)} – ${shortDate(current.to)}`}>
-      {current.bySource.length === 0 ? (
+      {current.total === 0 ? (
         <p className="text-[13px] text-white/40">No leads captured in this window.</p>
       ) : (
-        <ul className="space-y-3">
-          {current.bySource.map((s) => {
-            const prev = prevBySource.get(s.source) || 0;
-            const change = pctChange(s.count, prev);
-            return (
-              <li key={s.source}>
-                <div className="flex items-baseline justify-between gap-2 text-[13px]">
-                  <span className="truncate text-white/80">{sourceLabel(s.source)}</span>
-                  <span className="flex shrink-0 items-baseline gap-2">
-                    {change !== null && (
-                      <span
-                        className={`text-[11px] ${
-                          Math.abs(change) < 1
-                            ? 'text-white/35'
-                            : change > 0
-                              ? 'text-emerald-400'
-                              : 'text-red-400'
-                        }`}
-                      >
-                        {change > 0 ? '+' : ''}
-                        {change.toFixed(0)}%
-                      </span>
-                    )}
-                    <span className="font-semibold tabular-nums text-white">
-                      {NUM.format(s.count)}
-                    </span>
-                  </span>
-                </div>
-                <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className="h-full rounded-full bg-brand-orange"
-                    style={{ width: `${max ? Math.max(6, (s.count / max) * 100) : 0}%` }}
-                  />
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+        <>
+          {current.bySource.length > 0 && (
+            <ul className="space-y-3">
+              {current.bySource.map((s) => (
+                <SourceRow
+                  key={s.source}
+                  label={sourceLabel(s.source)}
+                  count={s.count}
+                  previous={prevBySource.get(s.source) || 0}
+                  max={max}
+                />
+              ))}
+            </ul>
+          )}
+
+          {/* Separate block, not sorted in among the forms. These are not
+              pipeline rows and never will be: they come from GA4, GBP and Ads,
+              they carry no lead id, and they cannot be joined to a submission.
+              The divider is the honest shape of that. */}
+          <ul
+            className={`space-y-3 ${
+              current.bySource.length > 0 ? 'mt-3 border-t border-white/10 pt-3' : ''
+            }`}
+          >
+            {TAP_ROWS.map((r) => (
+              <SourceRow
+                key={r.key}
+                label={r.label}
+                count={current.taps[r.key]}
+                previous={previous.taps[r.key]}
+                max={max}
+                tone="tap"
+                marker={r.overlap ? 'also in the taps above' : undefined}
+              />
+            ))}
+          </ul>
+
+          <div className="mt-3 flex items-baseline justify-between border-t border-white/10 pt-3">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-white/50">
+              Total
+            </span>
+            <span className="font-semibold tabular-nums text-white">
+              {NUM.format(current.total)}
+            </span>
+          </div>
+        </>
       )}
+
       <Note>
-        Form leads only. Calls from the call-tracking webhook are not written to the
-        pipeline log, so they cannot appear here — they would read as zero rather than
-        as missing.
+        The upper block is CRM deliveries — form submissions that reached the CRM. Everything
+        below it is a Google count of contact-button clicks: site call and WhatsApp taps from
+        GA4, the Google listing&apos;s call button from GBP, and the Ads tap conversion. A tap
+        is interest, not a conversation — nobody has spoken to these people. They are
+        browser-side events gated on cookie consent, so a visitor who declined cookies and
+        tapped is missing from them. And the Ads row counts taps already inside the two GA4
+        rows, so the total includes those taps twice.
       </Note>
     </Card>
   );
@@ -479,8 +617,6 @@ function AdsPanel({
     leadForm?.secondary ? 'Lead form' : null,
     taps?.secondary ? 'Tap clicks' : null,
   ].filter((n): n is string => n !== null);
-  const joinNames = (xs: string[]) =>
-    xs.length === 1 ? xs[0] : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`;
 
   return (
     <Card

@@ -28,6 +28,13 @@
  *      action that is flagged out of it (so it is zero by configuration and would
  *      stay zero through a hundred calls). Both are re-read here by a second
  *      implementation and compared field by field.
+ *   5. THE LEAD TOTAL. It sums form submissions with four contact-tap figures
+ *      drawn from three Google products, across two different window schemes, and
+ *      one of those figures is deliberately counted twice. Every way that can go
+ *      wrong produces a plausible number rather than an error, so the total is
+ *      checked as an arithmetic identity, each tap component is checked against
+ *      the panel that reports it, and the listing component is re-derived from
+ *      the stored series over the lead windows rather than the panel's own.
  *
  * Plain .js talking to PostgREST directly, matching the scripts/audit-*.js
  * convention: a .ts script importing lib/*.ts dies at the `@/` alias, and tsx is
@@ -182,7 +189,7 @@ async function main() {
   else fail('API sends X-Robots-Tag: noindex', `was "${xr}"`);
 
   // ── 2. The numbers ─────────────────────────────────────────────────────────
-  section('2. Numbers — cross-checked against the raw table');
+  section('2. Numbers — the lead total, cross-checked against the raw table');
 
   let api;
   try {
@@ -241,9 +248,161 @@ async function main() {
     }
   }
 
-  // The breakdown must sum to the headline, or the two disagree on screen.
+  // The form rows of the breakdown must sum to what they are built from — the
+  // `ghl` rows that reached the CRM. NOT to `accepted` (which also counts failed
+  // upserts) and NOT to `total` (which adds taps). Labelled for what it is.
   const sourceSum = (api.current.bySource || []).reduce((a, s) => a + s.count, 0);
-  assertEqual('source breakdown sums to the headline', sourceSum, api.current.crmOk);
+  assertEqual('form breakdown sums to CRM-ok', sourceSum, api.current.crmOk);
+
+  // ── The lead total, and the taps folded into it ────────────────────────────
+  //
+  // The headline is form submissions PLUS every contact tap, so the identity to
+  // check is that it equals the sum of its parts — and that each tap part is the
+  // SAME number the panel further down reports. The app reads the taps through a
+  // separate path (readLeadTaps, off the panels' payloads), so agreement here is
+  // evidence rather than a tautology.
+  //
+  // GBP is the exception and the reason this block does its own read: the listing
+  // panel deliberately uses its own settled 30-day window, while the lead total
+  // sums the stored series over the LEAD windows. A panel figure compared against
+  // the total would disagree by design, so the listing component is re-derived
+  // from `gbp_daily_metrics` here instead.
+
+  const { data: gbpLeadRows, error: gbpLeadErr } = await sb
+    .from('gbp_daily_metrics')
+    .select('metric, metric_date, value')
+    .eq('metric', 'CALL_CLICKS')
+    .gte('metric_date', w.previousFull.from)
+    .lte('metric_date', w.current.to);
+  if (gbpLeadErr) {
+    fail('gbp_daily_metrics readable for the lead total', gbpLeadErr.message);
+  }
+
+  const gbpCallsIn = (from, to) =>
+    (gbpLeadRows || [])
+      .filter((r) => r.metric_date >= from && r.metric_date <= to)
+      .reduce((a, r) => a + r.value, 0);
+
+  const LEAD_WINDOWS = [
+    ['this month', w.current, api.current, 'current'],
+    ['same span last month', w.previous, api.previous, 'previous'],
+    ['all of last month', w.previousFull, api.previousFull, 'previousFull'],
+  ];
+
+  for (const [name, win, period, which] of LEAD_WINDOWS) {
+    const taps = period.taps || {};
+
+    // The arithmetic this whole change is for: the headline is the sum of its
+    // parts, and none of the parts can be silently dropped.
+    assertEqual(
+      `${name}: total = accepted + every tap source`,
+      period.total,
+      period.accepted + taps.callButton + taps.whatsapp + taps.gbpCalls + taps.adsTaps,
+    );
+
+    if (period.total < period.accepted) {
+      fail(`${name}: total is at least the form count`, `${period.total} < ${period.accepted}`);
+    } else {
+      pass(`${name}: total is at least the form count`, `${period.total} >= ${period.accepted}`);
+    }
+
+    // The double count is declared exactly when there is something to double
+    // count, so the card's marker cannot go stale in either direction.
+    assertEqual(
+      `${name}: the Ads overlap is flagged exactly when Ads taps exist`,
+      period.tapsOverlap,
+      taps.adsTaps > 0,
+    );
+
+    if (!gbpLeadErr) {
+      assertEqual(
+        `${name}: listing call clicks match the stored series over the lead window`,
+        taps.gbpCalls,
+        gbpCallsIn(win.from, win.to),
+      );
+    }
+
+    if (api.clicks.available) {
+      assertEqual(
+        `${name}: site call taps match the GA4 panel`,
+        taps.callButton,
+        api.clicks[`${which}Totals`].phone,
+      );
+      assertEqual(
+        `${name}: WhatsApp taps match the GA4 panel`,
+        taps.whatsapp,
+        api.clicks[`${which}Totals`].whatsapp,
+      );
+    } else {
+      console.log('  · GA4 unavailable — its two tap components NOT cross-checked');
+    }
+
+    if (api.ads.available && api.ads.taps) {
+      assertEqual(
+        `${name}: Ads tap conversions match the Ads panel`,
+        taps.adsTaps,
+        api.ads.taps[`${which}Conversions`],
+      );
+    } else {
+      console.log('  · Ads taps unavailable — that component NOT cross-checked');
+    }
+  }
+
+  {
+    const t = api.current.taps || {};
+    const taps = t.callButton + t.whatsapp + t.gbpCalls + t.adsTaps;
+    console.log(
+      `  · Leads this month: ${api.current.total} total — ` +
+        `${api.current.accepted} form + ${taps} taps ` +
+        `(${t.callButton} call, ${t.whatsapp} WhatsApp, ${t.adsTaps} ads, ${t.gbpCalls} listing) ` +
+        `· was ${api.previous.total} over the same span`,
+    );
+  }
+
+  // A tap source that could not be read must be NAMED, because its zero is
+  // indistinguishable from a real zero and quietly shrinks the headline — the
+  // exact failure this dashboard exists to avoid.
+  const anyTapSourceMissing =
+    !api.clicks.available || !api.ads.available || !api.ads.taps || Boolean(gbpLeadErr);
+  if (anyTapSourceMissing && (api.current.tapsMissing || []).length === 0) {
+    fail(
+      'unreadable tap sources are named in the payload',
+      'a source was unavailable but tapsMissing is empty, so the total reads as a real figure',
+    );
+  } else if (!anyTapSourceMissing && (api.current.tapsMissing || []).length > 0) {
+    fail(
+      'no tap source reported missing on a healthy read',
+      (api.current.tapsMissing || []).join(', '),
+    );
+  } else {
+    pass(
+      'tap sourcing is reported honestly',
+      anyTapSourceMissing
+        ? `named: ${(api.current.tapsMissing || []).join(', ')}`
+        : 'nothing missing',
+    );
+  }
+
+  // The listing figure arrives incomplete and the note has to say so — and has to
+  // be able to turn OFF, or it is decoration rather than a check.
+  const lastSettled = api.gbp.coveredTo ? addDays(api.gbp.coveredTo, -5) : null;
+  const settling = lastSettled !== null && w.current.to > lastSettled;
+  if (settling && !api.current.note) {
+    fail(
+      'the total warns while listing data is still settling',
+      `window ends ${w.current.to}, settled only to ${lastSettled}, but note is empty`,
+    );
+  } else if (!settling && api.current.note) {
+    fail(
+      'the total stops warning once listing data has settled',
+      `note is still set: ${api.current.note}`,
+    );
+  } else {
+    pass(
+      'the settling warning is shown exactly when it applies',
+      settling ? 'shown' : 'not needed',
+    );
+  }
 
   // Windows must be the declared, non-overlapping shape.
   assertEqual('current window starts on the 1st', api.current.from.endsWith('-01'), true);
