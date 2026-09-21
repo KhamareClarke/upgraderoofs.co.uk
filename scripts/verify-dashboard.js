@@ -22,6 +22,12 @@
  *      worker outside its scope all still return 200. They just fail to install,
  *      on a phone, later, where nobody is watching. So the manifest's fields and
  *      every icon it names are fetched and asserted.
+ *   4. THE TWO GOOGLE PANELS. Both can be wrong in a way that looks like good
+ *      news or like nothing happening: a GA4 click total read over the wrong
+ *      window, or an Ads call count read from the `conversions` column of an
+ *      action that is flagged out of it (so it is zero by configuration and would
+ *      stay zero through a hundred calls). Both are re-read here by a second
+ *      implementation and compared field by field.
  *
  * Plain .js talking to PostgREST directly, matching the scripts/audit-*.js
  * convention: a .ts script importing lib/*.ts dies at the `@/` alias, and tsx is
@@ -427,7 +433,332 @@ async function main() {
     fail('home still fires the Ads config call', 'guarded Ads config call not found in the inline script');
   }
 
+  // ── 8. GA4 clicks and Ads call conversions ─────────────────────────────────
+  section('8. The two Google panels — re-read independently');
+
+  await verifyClicks(api, w);
+  await verifyAdsCalls(api);
+
   report();
+}
+
+// ── Section 8 helpers ────────────────────────────────────────────────────────
+// A second implementation of the two reads, in the same spirit as `windows()`
+// above: written out here rather than imported, so a bug in the app's version
+// cannot agree with itself.
+
+const CLICK_EVENTS = [
+  ['phone_click', 'phone'],
+  ['whatsapp_click', 'whatsapp'],
+  ['email_click', 'email'],
+];
+
+const OLDEST_RECORDED_CLICK = '2026-09-15';
+
+function b64url(input) {
+  return Buffer.from(input)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+/** Service-account JWT → access token. Plain fetch + node:crypto, like the app. */
+async function serviceAccountToken() {
+  const fs = require('fs');
+  const inline = (process.env.GA4_SERVICE_ACCOUNT_JSON || '').trim();
+  const keyPath = (process.env.GOOGLE_APPLICATION_CREDENTIALS || '').trim();
+  if (!inline && !keyPath) return null;
+  const key = JSON.parse(inline || fs.readFileSync(keyPath, 'utf8'));
+
+  const issued = Math.floor(Date.now() / 1000);
+  const claims = {
+    iss: key.client_email,
+    scope: 'https://www.googleapis.com/auth/analytics.readonly',
+    aud: key.token_uri || 'https://oauth2.googleapis.com/token',
+    iat: issued,
+    exp: issued + 3600,
+  };
+  const signingInput = `${b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))}.${b64url(JSON.stringify(claims))}`;
+  const assertion = `${signingInput}.${b64url(
+    require('crypto').createSign('RSA-SHA256').update(signingInput).sign(key.private_key),
+  )}`;
+
+  const res = await fetch(claims.aud, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }).toString(),
+  });
+  const body = await res.json();
+  if (!res.ok || !body.access_token) {
+    throw new Error(`service-account exchange HTTP ${res.status}: ${body.error_description || body.error || ''}`);
+  }
+  return body.access_token;
+}
+
+async function ga4Clicks(token, propertyId, from, to) {
+  const res = await fetch(
+    `https://analyticsdata.googleapis.com/v1beta/properties/${propertyId}:runReport`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dateRanges: [{ startDate: from, endDate: to }],
+        dimensions: [{ name: 'eventName' }],
+        metrics: [{ name: 'eventCount' }],
+        dimensionFilter: {
+          filter: { fieldName: 'eventName', inListFilter: { values: CLICK_EVENTS.map(([n]) => n) } },
+        },
+      }),
+    },
+  );
+  const body = await res.json();
+  if (!res.ok) throw new Error(`GA4 HTTP ${res.status}: ${body?.error?.message || ''}`);
+
+  const out = { phone: 0, whatsapp: 0, email: 0 };
+  const byEvent = new Map(CLICK_EVENTS);
+  for (const row of body.rows || []) {
+    const key = byEvent.get(row.dimensionValues?.[0]?.value);
+    if (key) out[key] += Number(row.metricValues?.[0]?.value || 0);
+  }
+  return out;
+}
+
+async function verifyClicks(api, w) {
+  const clicks = api.clicks;
+  if (!clicks) {
+    fail('clicks panel is present in the payload', 'api.clicks is missing');
+    return;
+  }
+  pass('clicks panel is present in the payload');
+
+  // The windows must be the LEAD windows, not a window of their own: the panel is
+  // only meaningful next to the lead count if the two cover the same days.
+  for (const which of ['current', 'previous']) {
+    const same =
+      clicks[which] && clicks[which].from === w[which].from && clicks[which].to === w[which].to;
+    if (same) pass(`clicks ${which} window matches the lead window`, `${w[which].from} → ${w[which].to}`);
+    else fail(`clicks ${which} window matches the lead window`, JSON.stringify(clicks[which]));
+  }
+
+  if (!clicks.available) {
+    console.log(`  · clicks unavailable: ${clicks.note}`);
+    return;
+  }
+
+  const propertyId = (process.env.GA4_PROPERTY_ID || '').trim();
+  if (!propertyId) {
+    console.log('  · GA4_PROPERTY_ID unset — totals NOT cross-checked');
+    return;
+  }
+
+  let token;
+  try {
+    token = await serviceAccountToken();
+  } catch (err) {
+    fail('GA4 service-account token minted independently', err.message);
+    return;
+  }
+  if (!token) {
+    console.log('  · no GA4 service-account credentials — totals NOT cross-checked');
+    return;
+  }
+
+  for (const which of ['current', 'previous']) {
+    let want;
+    try {
+      want = await ga4Clicks(token, propertyId, clicks[which].from, clicks[which].to);
+    } catch (err) {
+      fail(`GA4 re-read for the ${which} window`, err.message);
+      continue;
+    }
+    for (const [event, key] of CLICK_EVENTS) {
+      assertEqual(
+        `${which}: ${event} matches an independent GA4 read`,
+        clicks[`${which}Totals`][key],
+        want[key],
+      );
+    }
+  }
+
+  // The comparison must be flagged as distorted while the previous window sits
+  // before the day custom events started reaching GA4 — and the flag must be able
+  // to turn OFF, or it is decoration rather than a check.
+  const distorted = clicks.previous.from < OLDEST_RECORDED_CLICK;
+  if (distorted && !clicks.note) {
+    fail(
+      'clicks panel warns that the previous window predates event recording',
+      `window starts ${clicks.previous.from}, recording began ${OLDEST_RECORDED_CLICK}, but note is empty`,
+    );
+  } else if (!distorted && clicks.note) {
+    fail(
+      'clicks panel stops warning once both windows postdate event recording',
+      `window starts ${clicks.previous.from} but a note is still set`,
+    );
+  } else {
+    pass(
+      'clicks panel warns about the recording start exactly when it applies',
+      distorted ? 'warning shown' : 'no warning needed',
+    );
+  }
+}
+
+/** Ads access token, minted the same way the app does. */
+async function adsToken() {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: (process.env.GOOGLE_ADS_CLIENT_ID || '').trim(),
+      client_secret: (process.env.GOOGLE_ADS_CLIENT_SECRET || '').trim(),
+      refresh_token: (process.env.GOOGLE_ADS_REFRESH_TOKEN || '').trim(),
+      grant_type: 'refresh_token',
+    }).toString(),
+  });
+  const body = await res.json();
+  if (!res.ok || !body.access_token) throw new Error(`HTTP ${res.status}`);
+  return body.access_token;
+}
+
+async function gaql(token, query) {
+  const customerId = (process.env.GOOGLE_ADS_CUSTOMER_ID || '').replace(/\D/g, '');
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'developer-token': (process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '').trim(),
+    'Content-Type': 'application/json',
+  };
+  const login = (process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '').replace(/\D/g, '');
+  if (login) headers['login-customer-id'] = login;
+
+  const res = await fetch(
+    `https://googleads.googleapis.com/v22/customers/${customerId}/googleAds:searchStream`,
+    { method: 'POST', headers, body: JSON.stringify({ query }) },
+  );
+  const text = await res.text();
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = {};
+  }
+  if (!res.ok) {
+    const errs = (parsed?.error?.details || []).flatMap((d) => d.errors || []);
+    throw new Error(`GAQL HTTP ${res.status}: ${errs.map((e) => e.message).join(' | ') || text.slice(0, 200)}`);
+  }
+  return (Array.isArray(parsed) ? parsed : [parsed]).flatMap((b) => b.results || []);
+}
+
+async function verifyAdsCalls(api) {
+  if (!api.ads || !api.ads.available) {
+    console.log('  · Ads unavailable — call conversions NOT cross-checked');
+    return;
+  }
+
+  // The invariant that stops a failed read from rendering as "no calls happened".
+  if (!api.ads.calls && !api.ads.callsError) {
+    fail('a missing call read carries a reason', 'calls is null and callsError is empty');
+  } else if (!api.ads.calls && api.ads.callsError) {
+    fail('call conversions were read', `callsError: ${api.ads.callsError}`);
+  } else {
+    pass('call conversions were read');
+  }
+
+  if (!api.ads.calls) return;
+  const calls = api.ads.calls;
+
+  if (!(process.env.GOOGLE_ADS_CLIENT_ID || '').trim()) {
+    console.log('  · Ads credentials unset — call figures NOT cross-checked');
+    return;
+  }
+
+  let token;
+  try {
+    token = await adsToken();
+  } catch (err) {
+    fail('Ads token minted independently', err.message);
+    return;
+  }
+
+  // The action the panel claims to be reporting.
+  let action;
+  try {
+    const rows = await gaql(
+      token,
+      'SELECT conversion_action.id, conversion_action.name, conversion_action.type, ' +
+        'conversion_action.status, conversion_action.include_in_conversions_metric, ' +
+        'conversion_action.phone_call_duration_seconds FROM conversion_action ' +
+        `WHERE conversion_action.id = ${calls.actionId}`,
+    );
+    action = rows[0]?.conversionAction;
+  } catch (err) {
+    fail('the reported conversion action is readable', err.message);
+    return;
+  }
+
+  if (!action) {
+    fail('the reported conversion action exists', `id ${calls.actionId} not found`);
+    return;
+  }
+  pass('the reported conversion action exists', `${action.id} ${action.name}`);
+
+  assertEqual('the reported action is a website-call action', action.type, 'WEBSITE_CALL');
+  assertEqual('the reported action is enabled', action.status, 'ENABLED');
+  assertEqual(
+    'the call-duration threshold matches the action',
+    calls.minimumSeconds,
+    Number(action.phoneCallDurationSeconds),
+  );
+
+  // The trap this whole panel had to avoid: an action flagged out of the
+  // Conversions column reports 0 there forever. If that flag is set, the panel's
+  // count MUST be coming from all_conversions, and its `inConversionsColumn`
+  // figure must be the (zero) other column.
+  const secondary = action.includeInConversionsMetric !== true;
+
+  for (const [which, win] of [
+    ['current', api.ads.current],
+    ['previous', api.ads.previous],
+  ]) {
+    let rows;
+    try {
+      rows = await gaql(
+        token,
+        'SELECT segments.conversion_action, metrics.conversions, metrics.all_conversions ' +
+          `FROM customer WHERE segments.conversion_action = ` +
+          `'customers/${(process.env.GOOGLE_ADS_CUSTOMER_ID || '').replace(/\D/g, '')}/conversionActions/${calls.actionId}' ` +
+          `AND segments.date BETWEEN '${win.from}' AND '${win.to}'`,
+      );
+    } catch (err) {
+      fail(`independent call read for the ${which} window`, err.message);
+      continue;
+    }
+    const allConversions = rows.reduce((a, r) => a + Number(r.metrics?.allConversions || 0), 0);
+    const inColumn = rows.reduce((a, r) => a + Number(r.metrics?.conversions || 0), 0);
+
+    const field = which === 'current' ? 'currentCalls' : 'previousCalls';
+    const colField = which === 'current' ? 'currentInConversionsColumn' : 'previousInConversionsColumn';
+    assertEqual(`${which}: recorded calls match an independent Ads read`, calls[field], allConversions);
+    assertEqual(`${which}: the Conversions-column figure matches`, calls[colField], inColumn);
+  }
+
+  if (secondary) {
+    // Not a failure — but it must be stated, because it is why the number on the
+    // dashboard differs from the one inside Google Ads.
+    const cur = calls.currentInConversionsColumn;
+    if (cur === 0) {
+      pass('a Secondary action is reported as absent from Ads\' own Conversions column');
+    } else {
+      fail(
+        'a Secondary action cannot appear in the Conversions column',
+        `includeInConversionsMetric is false but the panel reported ${cur}`,
+      );
+    }
+    if (calls.note) pass('the Secondary action is explained on the panel');
+    else fail('the Secondary action is explained on the panel', 'no note set');
+  }
 }
 
 function report() {

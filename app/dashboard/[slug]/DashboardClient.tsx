@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { DashboardData, FeedEvent, GbpActionTotals, LeadPeriod } from '@/lib/dashboard-data';
+import type {
+  ClickTotals,
+  DashboardData,
+  FeedEvent,
+  GbpActionTotals,
+  LeadPeriod,
+} from '@/lib/dashboard-data';
 
 /**
  * components/DashboardClient.tsx (route-private)
@@ -388,9 +394,60 @@ function GbpPanel({ gbp }: { gbp: DashboardData['gbp'] }) {
   );
 }
 
+function ClicksPanel({ clicks }: { clicks: DashboardData['clicks'] }) {
+  const row = (label: string, key: keyof ClickTotals) => (
+    <Stat label={label} current={clicks.currentTotals[key]} previous={clicks.previousTotals[key]} />
+  );
+
+  return (
+    <Card
+      title="Clicks on the site"
+      meta={
+        clicks.available
+          ? `${shortDate(clicks.current.from)} – ${shortDate(clicks.current.to)}`
+          : undefined
+      }
+    >
+      {clicks.available ? (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            {row('Call button', 'phone')}
+            {row('WhatsApp', 'whatsapp')}
+            {row('Email', 'email')}
+          </div>
+          <Note>
+            Taps recorded by GA4, compared against the previous{' '}
+            {shortDate(clicks.previous.from)} – {shortDate(clicks.previous.to)}. The newest
+            day is still filling in and Google keeps revising the last day or two, so treat
+            today as provisional — the same caution the Google listing panel applies to its
+            own window.
+          </Note>
+          {/* The honest limit of this panel, stated rather than implied: none of
+              these three events can observe what happened after the tap. */}
+          <Note>
+            These measure intent, not delivery. A tap opens the dialler, WhatsApp or a mail
+            client, and nothing on the site can see whether the call was placed or the
+            message was sent. A call that rings out and a WhatsApp message that is never
+            sent both count here, so this is a leading indicator — never a count of
+            conversations.
+          </Note>
+          {clicks.note && <Note tone="warn">{clicks.note}</Note>}
+        </>
+      ) : (
+        <Note>{clicks.note || 'Click data is unavailable.'}</Note>
+      )}
+    </Card>
+  );
+}
+
 function AdsPanel({ ads }: { ads: DashboardData['ads'] }) {
   const cpc = (t: { costMicros: number; clicks: number }) =>
     t.clicks > 0 ? t.costMicros / t.clicks : 0;
+
+  const calls = ads.calls;
+  // The threshold is read from the conversion action rather than written here, so
+  // the label cannot drift from what Google is actually enforcing.
+  const callLabel = calls?.minimumSeconds ? `Calls (${calls.minimumSeconds}s+)` : 'Calls';
 
   return (
     <Card
@@ -399,7 +456,7 @@ function AdsPanel({ ads }: { ads: DashboardData['ads'] }) {
     >
       {ads.available ? (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Stat label="Spend" current={ads.currentTotals.costMicros} previous={ads.previousTotals.costMicros} format={money} />
             <Stat label="Clicks" current={ads.currentTotals.clicks} previous={ads.previousTotals.clicks} />
             <div className="min-w-0">
@@ -413,12 +470,58 @@ function AdsPanel({ ads }: { ads: DashboardData['ads'] }) {
                 vs {cpc(ads.previousTotals) ? money(cpc(ads.previousTotals)) : '—'}
               </div>
             </div>
+            {calls && (
+              <Stat
+                label={callLabel}
+                current={calls.currentCalls}
+                previous={calls.previousCalls}
+              />
+            )}
           </div>
+
           <Note>
-            Spend and clicks only. Conversions are deliberately left out: the conversion
-            actions on this account were rebuilt on 15 Sep 2026 and the browser-side ones
-            recorded nothing across ~£954 of spend, so the figure would not mean what it
-            looks like it means.
+            Spend, clicks and cost-per-click are account-wide. The call figure is different
+            in kind: it is what Google recorded against the{' '}
+            <span className="text-white/70">{calls?.actionName || 'website call'}</span>{' '}
+            conversion action, so it counts only ad traffic, and only the calls Google was
+            able to see.
+          </Note>
+
+          {/* The zero state, said out loud. An empty cell here would read as a
+              fault or as "nobody is calling", when in fact Google cannot record a
+              call until ad traffic has seen the forwarding number. */}
+          {calls && calls.currentCalls === 0 && calls.previousCalls === 0 && (
+            <Note>
+              No calls recorded yet. Google only registers one when an ad click shows the
+              forwarding number and the call runs for{' '}
+              {calls.minimumSeconds ? `at least ${calls.minimumSeconds} seconds` : 'long enough'},
+              so this stays at zero until real ad traffic produces calls. Zero here is
+              expected, not a broken panel.
+            </Note>
+          )}
+
+          {calls?.note && <Note tone="warn">{calls.note}</Note>}
+
+          {calls && calls.currentInConversionsColumn < calls.currentCalls && (
+            <Note>
+              Only {NUM.format(calls.currentInConversionsColumn)} of these{' '}
+              {NUM.format(calls.currentCalls)} appear in the Conversions column inside Google
+              Ads itself, because the action is Secondary. The number above is the count of
+              calls Google recorded.
+            </Note>
+          )}
+
+          {ads.callsError && (
+            <Note tone="warn">
+              The call figures could not be read, so they are missing rather than zero:{' '}
+              {ads.callsError}
+            </Note>
+          )}
+
+          <Note>
+            The account&apos;s other conversion actions are still left out. The browser-side
+            ones recorded nothing across ~£954 of spend, so an account-wide conversions
+            figure would not mean what it looks like it means.
           </Note>
         </>
       ) : (
@@ -621,6 +724,7 @@ export function DashboardClient({ slug }: { slug: string }) {
           <LeadHeadline data={data} />
           <SourceBreakdown current={data.current} previous={data.previous} />
           <GbpPanel gbp={data.gbp} />
+          <ClicksPanel clicks={data.clicks} />
           <AdsPanel ads={data.ads} />
           <Feed events={data.feed} />
           <InstallHint />
