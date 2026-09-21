@@ -775,21 +775,48 @@ async function verifyStoredSnapshots(js) {
     );
   }
 
-  // Both panels must actually be rendering figures. `available` is the field the
-  // card branches on, so it is the honest assertion — "is not showing the
-  // missing-store notice" alone would pass while a panel was unavailable for any
-  // other reason. The note is checked as well, because when the store IS missing
-  // the note is the part that names the migration, and losing that turns a
-  // diagnosable state into a blank card.
-  const NOTE_MARKER = 'No stored Google figures are available';
+  // A panel either renders figures or it does not, and "does not" has exactly two
+  // honest causes: the store could not be READ (a fault, and the thing this section
+  // is here to catch) or the store is readable and simply holds nothing for this
+  // window yet (a data state the card names, and the state a rate-limited Ads read
+  // produces).
+  //
+  // Neither cause may be inferred from the sentence they share. Two of the three
+  // notes open with "No stored Google figures are available" — the missing-store
+  // one and the not-read-yet one — so keying on that phrases collapses precisely
+  // the two states e0c6557 split apart, and reports an applied migration as
+  // unapplied. The markers below are the parts unique to each fault: the migration
+  // filename appears only in the missing-store note, and "a storage read that
+  // failed" only in the read-failure note.
+  //
+  // Failing outright on a panel with no figures would make this gate cry wolf on a
+  // legitimate production state — an Ads read inside its rate-limit window — and a
+  // check that fails for a reason nobody can act on stops being read. So a panel
+  // with no figures must instead NAME that state, which is the same distinction
+  // worth asserting: the two are told apart, and the card says which it is.
+  const STORAGE_FAULTS = [
+    '20260921120000_create_google_panel_snapshots.sql',
+    'This is a storage read that failed',
+  ];
+  const NOT_READ_YET = 'the first read has not succeeded';
+
   for (const [name, panel] of [['Ads', third.ads], ['GA4', third.clicks]]) {
-    assertEqual(`the ${name} panel is rendering figures`, panel && panel.available, true);
     const note = String((panel && panel.note) || '');
     assertEqual(
-      `the ${name} panel is not showing the missing-store notice`,
-      note.includes(NOTE_MARKER),
-      false,
+      `the ${name} panel reports no storage fault`,
+      STORAGE_FAULTS.find((marker) => note.includes(marker)) || null,
+      null,
     );
+
+    if (panel && panel.available) {
+      pass(`the ${name} panel is rendering figures`);
+    } else {
+      assertEqual(
+        `the ${name} panel has no figures and names that as the reason`,
+        note.includes(NOT_READ_YET),
+        true,
+      );
+    }
   }
   assertEqual('the payload reports no missing store', third.storeNote, null);
 
