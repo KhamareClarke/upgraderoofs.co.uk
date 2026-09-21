@@ -302,7 +302,14 @@ function Skeleton() {
 interface BreakdownRow {
   key: string;
   label: string;
-  /** The qualifier that says where the number came from. */
+  /**
+   * The qualifier that says where the number came from — and, on the tap rows,
+   * over what. GA4 counts a tap made on any visit; the Ads figure counts only
+   * the taps Google could tie to an ad click. Two rows that both say "taps" but
+   * measure different populations have to say so in the row itself, because the
+   * difference is invisible in the numbers and read as a contradiction once
+   * already (GA4 5 against Ads 1 for one window).
+   */
   origin: string;
   icon: LucideIcon;
   current: number;
@@ -336,7 +343,7 @@ function breakdownRows(current: LeadPeriod, previous: LeadPeriod): BreakdownRow[
     {
       key: 'callButton',
       label: 'Call button taps',
-      origin: 'GA4',
+      origin: 'GA4 · all traffic',
       icon: TAP_ICONS.callButton,
       current: current.taps.callButton,
       previous: previous.taps.callButton,
@@ -345,7 +352,7 @@ function breakdownRows(current: LeadPeriod, previous: LeadPeriod): BreakdownRow[
     {
       key: 'whatsapp',
       label: 'WhatsApp taps',
-      origin: 'GA4',
+      origin: 'GA4 · all traffic',
       icon: TAP_ICONS.whatsapp,
       current: current.taps.whatsapp,
       previous: previous.taps.whatsapp,
@@ -362,8 +369,8 @@ function breakdownRows(current: LeadPeriod, previous: LeadPeriod): BreakdownRow[
     },
     {
       key: 'adsTaps',
-      label: 'Ads tap conversions',
-      origin: 'Google Ads',
+      label: 'Ad-attributed taps',
+      origin: 'Google Ads · ad clicks',
       icon: TAP_ICONS.adsTaps,
       current: current.taps.adsTaps,
       previous: previous.taps.adsTaps,
@@ -537,7 +544,10 @@ function LeadSection({ data }: { data: DashboardData }) {
         count of a button being pressed — interest, not a conversation. Nobody has spoken to these
         people; a call that rang out and a WhatsApp message never sent both count. The taps are
         browser events gated on cookie consent, so a visitor who declined cookies and tapped is
-        missing from them.
+        missing from them. The two GA4 rows count a tap made on any visit, whatever brought the
+        visitor; the Ads row counts only the taps Google could tie to an ad click. It is the
+        ad-attributed part of the same kind of event, not a second measurement of it — the two
+        are different sizes by design and are not meant to agree.
       </Hint>
       {current.tapsOverlap && (
         <Hint>

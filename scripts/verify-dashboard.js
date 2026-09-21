@@ -988,7 +988,7 @@ async function verifyServedLayout(js, api) {
     'Call button taps',
     'WhatsApp taps',
     'Google listing calls',
-    'Ads tap conversions',
+    'Ad-attributed taps',
   ];
   for (const label of ROW_LABELS) {
     assertEqual(`the breakdown renders a "${label}" row`, js.includes(label), true);

@@ -1651,15 +1651,15 @@ async function readLeadTaps(
   if (!adsTaps) {
     missing.push(
       ads.available
-        ? 'Google Ads tap conversions (the stored figures are for an earlier window)'
-        : 'Google Ads tap conversions',
+        ? 'ad-attributed taps (Google Ads — the stored figures are for an earlier window)'
+        : 'ad-attributed taps (Google Ads)',
     );
   }
   // The tap spec always asks for this window, so a null here means the read was
   // skipped rather than that the figure is genuinely unknown. Zeroing it would
   // quietly shrink the third line, so name it instead.
   if (adsTaps && adsTaps.previousFullConversions === null) {
-    missing.push('Google Ads tap conversions for the 30 days before that');
+    missing.push('ad-attributed taps (Google Ads) for the 30 days before that');
   }
 
   // One read for all three windows: previousFull is the earliest, current the
