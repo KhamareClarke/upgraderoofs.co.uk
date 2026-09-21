@@ -9,11 +9,22 @@
  * The three POST handlers under app/api/send-* are compiled from their real
  * TypeScript source and invoked in-process with a real NextRequest, so the
  * HTTP status under test comes from the shipped handler — not a reimplementation
- * of it. Only the three modules with outbound side effects are replaced:
+ * of it. Every module with a side effect outside this process is replaced:
  *
- *   @/lib/ghl       — otherwise this script would create a real GHL contact
- *   @/lib/mail      — otherwise this script would send a real email
+ *   @/lib/ghl          — otherwise this script would create a real GHL contact
+ *   @/lib/mail         — otherwise this script would send a real email
+ *   @/lib/sms-notify   — otherwise this script would send a real text
  *   @/lib/fleet-ingest — otherwise this script would ping the JARVIS hub
+ *   @/lib/lead-health  — otherwise this script would write rows into the LIVE
+ *                        lead_pipeline_events table, which is exactly what the
+ *                        production dashboard's "Latest activity" feed reads
+ *
+ * `lead-health` is the one that hid: the others fail loudly or cost money, while
+ * this one writes to the same database the dashboard reads, so a test run simply
+ * appeared in production as a burst of plausible leads. It went un-stubbed until
+ * 2026-09-21, when a run was found to have written 29 rows in 0.61 seconds. A
+ * fetch-level leak guard (see "Live-database isolation") now fails the run if any
+ * Supabase write is attempted at all, so the next un-stubbed sink cannot repeat it.
  *
  * Everything else (spam-filter, lead-validation, rate-limit, turnstile) is the
  * real module. That is deliberate: those are the components whose behaviour the
@@ -31,10 +42,14 @@
  *   --schema  diff each form payload against the live PostgREST schema
  *
  * Usage:
- *   node scripts/test-lead-pipeline-live.js                 # offline, no side effects
+ *   node scripts/test-lead-pipeline-live.js                 # in-process, no side effects
  *   node scripts/test-lead-pipeline-live.js --ghl --schema  # + read-only live probes
  *   node scripts/test-lead-pipeline-live.js --url https://upgraderoofs.co.uk
- *       ^ real HTTP fire — SENDS A REAL EMAIL and CREATES A REAL GHL CONTACT
+ *       ^ real HTTP fire — SENDS A REAL EMAIL and CREATES A REAL GHL CONTACT.
+ *         These are genuine requests to the live route, so they ALSO write real
+ *         lead_pipeline_events rows that no stub can intercept and that are
+ *         indistinguishable from a customer's. An --url run therefore shows up
+ *         in the dashboard feed; note the time before running it.
  *
  * Exit: 0 = every assertion held, 1 = a regression.
  */
@@ -157,7 +172,11 @@ function loadModule(file) {
 // ── Spies ───────────────────────────────────────────────────────────────────
 // `control` is read at call time so one scenario can flip behaviour without
 // reloading the route module.
-const control = { ghlOk: true, mailOk: true, calls: { ghl: [], mail: [], sms: [], fleet: 0 } };
+const control = { ghlOk: true, mailOk: true, calls: { ghl: [], mail: [], sms: [], fleet: 0, health: [] } };
+
+// Any attempt to write to Supabase while a route handler is executing. Non-empty
+// means this run leaked into the live database — see the leak guard below.
+const supabaseWrites = [];
 
 stubs['@/lib/ghl'] = {
   pushLeadToGhl: async (input) => {
@@ -186,6 +205,37 @@ stubs['@/lib/fleet-ingest'] = {
   },
 };
 stubs['@/lib/lead-logger'] = { logLeadSubmission: () => {} };
+
+// THE ONE SINK THAT IS NOT "OUTBOUND", AND SO WAS MISSED.
+//
+// Every other stub here replaces a module that talks to a third party, which is
+// why the absence of this one was invisible: `lead-health` writes to the SAME
+// Supabase project the production dashboard reads, and the dashboard's "Latest
+// activity" feed is a plain SELECT over it. Leaving it un-stubbed meant each
+// scenario wrote real rows into the live feed — looking exactly like real leads,
+// because the rows differ only in a `detail` string no one reads.
+//
+// This is not hypothetical. On 2026-09-20 a single run wrote 29 rows into
+// production in 0.61 seconds: send-quote 9, send-contact 9, send-special-offer
+// 11 (that route has an optionalFieldVariant, so it runs one extra scenario).
+// They surfaced days later as "Simulated SMTP failure" and "upsert failed —
+// lead not in CRM" in the customer-facing feed.
+//
+// Every writer in the codebase reaches this table through this module — the
+// three routes call recordPipelineEvent directly, and lib/ghl, lib/sms-notify
+// and lib/gbp-performance all import it — so stubbing it closes the whole
+// server-side write path, not just the part the routes use.
+//
+// Calls are captured rather than dropped so the harness can still assert the
+// routes remain instrumented; see the check after the scenario loop.
+stubs['@/lib/lead-health'] = {
+  recordPipelineEvent: async (event) => {
+    control.calls.health.push(event);
+  },
+  recordSilentDrop: (source, reason) => {
+    control.calls.health.push({ source, channel: 'filter', ok: false, detail: reason });
+  },
+};
 // Without this the routes would call the REAL SMS notifier — and since
 // .env.local carries working SMS_* values, this "no side effects" suite would
 // upsert a contact and send a live text. Stub it like the other outbound sinks.
@@ -269,6 +319,34 @@ async function main() {
     { key: 'ghl-fails', ghlOk: false, mailOk: true, expectStatus: 200, expectGhl: 'failed', expectEmail: 'ok' },
     { key: 'both-fail', ghlOk: false, mailOk: false, expectStatus: 502, expectGhl: 'failed', expectEmail: 'failed' },
   ];
+
+  // ── Leak guard ───────────────────────────────────────────────────────────
+  // Stubbing lead-health closes the write path that EXISTS. This closes the one
+  // that might be added later: a future route (or lib) that reaches Supabase
+  // directly would otherwise leak test rows into the live feed, and those rows
+  // would be indistinguishable from real leads. The routes make no outbound
+  // calls of their own — every sink is stubbed above — so any Supabase write
+  // attempted from here is a leak by definition, not a legitimate request.
+  //
+  // Reads are left alone: the --schema probe legitimately GETs PostgREST.
+  const realFetch = globalThis.fetch;
+  const supabaseHost = (() => {
+    try {
+      return new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || '').host || null;
+    } catch {
+      return null;
+    }
+  })();
+  if (!supabaseHost) warn('NEXT_PUBLIC_SUPABASE_URL unset — leak guard cannot identify Supabase writes');
+  globalThis.fetch = (input, init) => {
+    const method = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (supabaseHost && url.includes(supabaseHost) && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+      supabaseWrites.push(`${method} ${url}`);
+      throw new Error(`LEAK GUARD: blocked a Supabase write (${method} ${url})`);
+    }
+    return realFetch(input, init);
+  };
 
   // ── 2. Route response integrity ──────────────────────────────────────────
   for (const route of ROUTES) {
@@ -422,6 +500,25 @@ async function main() {
 
     console.log('');
   }
+
+  globalThis.fetch = realFetch;
+
+  // The two halves of the guarantee. The first proves nothing leaked on THIS
+  // run; the second proves the stub is still wired, so a future edit that
+  // renames the module or routes instrumentation around lead-health fails here
+  // rather than in the production feed.
+  console.log(`${C.bold}Live-database isolation${C.reset}`);
+  check(
+    supabaseWrites.length === 0,
+    'no Supabase write attempted during the scenarios',
+    supabaseWrites.length ? `blocked: ${supabaseWrites.join(' | ')}` : null,
+  );
+  check(
+    control.calls.health.length > 0,
+    'routes still record pipeline events (via the stub)',
+    'lead-health was never called — the stub is wired to the wrong specifier, or instrumentation was removed',
+  );
+  console.log('');
 
   // ── 1. Schema vs payload alignment ───────────────────────────────────────
   console.log(`${C.bold}Schema / payload alignment${C.reset}`);
