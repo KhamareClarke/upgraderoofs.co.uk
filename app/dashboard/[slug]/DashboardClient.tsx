@@ -303,12 +303,14 @@ interface BreakdownRow {
   key: string;
   label: string;
   /**
-   * The qualifier that says where the number came from — and, on the tap rows,
-   * over what. GA4 counts a tap made on any visit; the Ads figure counts only
-   * the taps Google could tie to an ad click. Two rows that both say "taps" but
-   * measure different populations have to say so in the row itself, because the
-   * difference is invisible in the numbers and read as a contradiction once
-   * already (GA4 5 against Ads 1 for one window).
+   * The qualifier that says where the number came from — and, where it fits, over
+   * what: the GA4 rows carry their scope here because "GA4" alone does not say
+   * they count every visit. Two rows that both say "taps" but measure different
+   * populations have to say so in the row itself, because the difference is
+   * invisible in the numbers and read as a contradiction once already (GA4 5
+   * against Ads 1 for the same window). The Ads row keeps its scope in the label
+   * instead — "Ad-attributed taps" — because label and qualifier share one
+   * truncating line and the longest of them is the one that gets cut first.
    */
   origin: string;
   icon: LucideIcon;
@@ -370,7 +372,7 @@ function breakdownRows(current: LeadPeriod, previous: LeadPeriod): BreakdownRow[
     {
       key: 'adsTaps',
       label: 'Ad-attributed taps',
-      origin: 'Google Ads · ad clicks',
+      origin: 'Google Ads',
       icon: TAP_ICONS.adsTaps,
       current: current.taps.adsTaps,
       previous: previous.taps.adsTaps,
