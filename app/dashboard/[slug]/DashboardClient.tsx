@@ -379,7 +379,7 @@ function BreakdownRowView({ row, max }: { row: BreakdownRow; max: number }) {
     <li className="flex items-center gap-3 py-2.5">
       <span
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${
-          row.tone === 'form' ? 'bg-brand-navy/[0.07] text-brand-navy' : 'bg-brand-orange/10 text-brand-orange'
+          row.tone === 'form' ? 'bg-brand-navy/[0.07] text-brand-blue' : 'bg-brand-orange/10 text-brand-orange'
         }`}
         aria-hidden
       >
@@ -388,13 +388,13 @@ function BreakdownRowView({ row, max }: { row: BreakdownRow; max: number }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 truncate text-sm font-medium text-brand-navy">
+          <span className="min-w-0 truncate text-sm font-medium text-brand-blue">
             {row.label}
             <span className="ml-1.5 text-[10px] font-normal uppercase tracking-wide text-gray-400">
               {row.origin}
             </span>
           </span>
-          <span className="shrink-0 text-base font-semibold tabular-nums text-brand-navy">
+          <span className="shrink-0 text-base font-semibold tabular-nums text-brand-blue">
             {NUM.format(row.current)}
           </span>
         </div>
@@ -437,7 +437,7 @@ function LeadSection({ data }: { data: DashboardData }) {
       <Kicker>Leads</Kicker>
 
       <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-5xl font-bold leading-none tabular-nums text-brand-navy sm:text-6xl">
+        <span className="text-5xl font-bold leading-none tabular-nums text-brand-blue sm:text-6xl">
           {NUM.format(current.total)}
         </span>
         <Delta current={current.total} previous={previous.total} size="md" />
@@ -465,7 +465,7 @@ function LeadSection({ data }: { data: DashboardData }) {
         <span className="text-xs font-semibold uppercase tracking-[0.15em] text-gray-500">
           Total
         </span>
-        <span className="text-lg font-bold tabular-nums text-brand-navy">
+        <span className="text-lg font-bold tabular-nums text-brand-blue">
           {NUM.format(current.total)}
         </span>
       </div>
@@ -506,7 +506,7 @@ function LeadSection({ data }: { data: DashboardData }) {
                       ? 'text-brand-orange'
                       : s.tone === 'muted'
                         ? 'text-gray-300'
-                        : 'text-brand-navy'
+                        : 'text-brand-blue'
                 }`}
               >
                 {NUM.format(s.value)}
@@ -581,7 +581,7 @@ function Figure({
   return (
     <div className="min-w-0">
       <div className="truncate text-[11px] text-gray-500">{label}</div>
-      <div className="mt-0.5 text-lg font-semibold tabular-nums text-brand-navy">
+      <div className="mt-0.5 text-lg font-semibold tabular-nums text-brand-blue">
         {format(current)}
       </div>
       <div className="mt-0.5">
@@ -843,7 +843,7 @@ function ActivitySection({ events }: { events: FeedEvent[] }) {
               />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-2">
-                  <span className="truncate text-[13px] text-brand-navy">
+                  <span className="truncate text-[13px] text-brand-blue">
                     {sourceLabel(e.source)}
                     <span className="text-gray-400"> · {channelLabel(e.channel)}</span>
                   </span>
@@ -897,12 +897,12 @@ function InstallHint() {
   return (
     <div className="mx-5 mb-4 mt-1 flex items-start gap-2 rounded-lg bg-brand-grey px-3 py-2 text-[12px] text-gray-600">
       <span className="flex-1">
-        To keep this on your home screen: tap <span className="text-brand-navy">Share</span>, then{' '}
-        <span className="text-brand-navy">Add to Home Screen</span>.
+        To keep this on your home screen: tap <span className="text-brand-blue">Share</span>, then{' '}
+        <span className="text-brand-blue">Add to Home Screen</span>.
       </span>
       <button
         type="button"
-        className="-mr-1 shrink-0 px-1 text-gray-400 hover:text-brand-navy"
+        className="-mr-1 shrink-0 px-1 text-gray-400 hover:text-brand-blue"
         aria-label="Dismiss"
         onClick={() => {
           setShow(false);
@@ -985,7 +985,7 @@ export function DashboardClient({ slug }: { slug: string }) {
     return (
       <Shell>
         <div className="p-5">
-          <p className="text-sm leading-relaxed text-brand-navy">
+          <p className="text-sm leading-relaxed text-brand-blue">
             This dashboard URL is not active.
           </p>
           <p className="mt-2 text-[12px] leading-relaxed text-gray-500">
@@ -1038,12 +1038,18 @@ export function DashboardClient({ slug }: { slug: string }) {
 /**
  * The app frame.
  *
- * Built from the marketing site's own tokens — `brand-navy` for text,
- * `brand-orange` for the accent, Poppins through the inherited `font-sans`, and
- * `brand-grey` for the recessed blocks — so this reads as the same brand rather
- * than a lookalike. It was previously a self-contained dark navy app; that made
- * it visibly a different product from the site it reports on, and the numbers
- * here are the site's.
+ * Built from the marketing site's own tokens — `brand-orange` for the accent,
+ * Poppins through the inherited `font-sans`, and `brand-grey` for the recessed
+ * blocks — so this reads as the same brand rather than a lookalike. It was
+ * previously a self-contained dark navy app; that made it visibly a different
+ * product from the site it reports on, and the numbers here are the site's.
+ *
+ * Text is `brand-blue`, NOT the site's `brand-navy`. Every line used to be navy,
+ * and #0A1F44 is dark enough that the whole dashboard read as black text — which
+ * is how it was reported. The two are separate tokens so the marketing pages,
+ * which use navy for their header, footer and wordmark gradient, are untouched.
+ * Two navy FILLS remain deliberately, since this is a text colour: the solid
+ * segment of the "where they came from" bar and the Refresh button's hover.
  */
 function Shell({
   children,
@@ -1057,11 +1063,11 @@ function Shell({
   updated?: string;
 }) {
   return (
-    <div className="min-h-screen bg-brand-grey text-brand-navy">
+    <div className="min-h-screen bg-brand-grey text-brand-blue">
       <div className="mx-auto max-w-2xl px-4 pb-8 pt-[max(1rem,env(safe-area-inset-top))]">
         <header className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h1 className="text-lg font-bold leading-tight text-brand-navy">Leads</h1>
+            <h1 className="text-lg font-bold leading-tight text-brand-blue">Leads</h1>
             <p className="text-[11px] text-gray-500">
               {updated ? `Updated ${updated}` : 'Loading…'}
             </p>
@@ -1071,7 +1077,7 @@ function Shell({
               type="button"
               onClick={onRefresh}
               disabled={refreshing}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-navy/20 bg-white px-3.5 py-1.5 text-[12px] font-semibold text-brand-navy transition-colors hover:bg-brand-navy hover:text-white disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-navy/20 bg-white px-3.5 py-1.5 text-[12px] font-semibold text-brand-blue transition-colors hover:bg-brand-navy hover:text-white disabled:opacity-50"
             >
               <RefreshCw
                 className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`}

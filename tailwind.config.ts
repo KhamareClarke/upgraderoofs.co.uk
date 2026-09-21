@@ -29,6 +29,22 @@ const config: Config = {
           grey: '#FAFBFC',
           'navy-light': '#1E2A38',
           'grey-warm': '#F5F5F3',
+          // The brand's dark blue, sampled from public/images/upgrade_logo.png —
+          // #273C57 is the dominant dark colour there (94,291 of the sampled
+          // pixels), and #E35436 is the orange beside it.
+          //
+          // This is the DASHBOARD's text colour, and it is deliberately separate
+          // from `navy` below rather than a change to it. The two are NOT the
+          // same colour, which is worth knowing: `#0A1F44` is markedly darker
+          // than the logo's `#273C57`, which is why every line of dashboard text
+          // set in `brand-navy` read as black on a phone and was reported as
+          // "the black should be blue". The logo's blue reads as blue at the same
+          // size. The same gap exists on the orange (#D4622A against the logo's
+          // #E35436); the site's tokens are the darker pair.
+          //
+          // #273C57 on the #FAFBFC card is 10.8:1 — AAA for body text, not just
+          // for the large figures.
+          blue: '#273C57',
         },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
