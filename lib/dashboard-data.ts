@@ -1835,6 +1835,44 @@ const SNAPSHOT_UNAVAILABLE_NOTE =
   'scheduled sync. The dashboard does not fall back to reading Google directly: a live ' +
   'read on every page load is what exhausted the Ads quota.';
 
+/**
+ * Shown when the read failed for some other reason — the table is there and this
+ * request could not get at it.
+ *
+ * The distinction is worth the extra constant. Both states mean "no figures", but
+ * they mean opposite things to whoever is looking at the dashboard: one is a
+ * migration that has not been applied, the other is a request that will probably
+ * succeed next time. Collapsing them tells someone to apply a migration that is
+ * already applied, and the next person to read that concludes the dashboard is
+ * fine when it is not.
+ *
+ * It still does not fall back to Google, and says so — a storage read that
+ * happens to be failing is exactly the moment a fallback would be most tempting
+ * and most expensive.
+ */
+const SNAPSHOT_READ_FAILED_NOTE =
+  'The stored Google figures could not be read for this request, so they are not shown. ' +
+  'This is a storage read that failed, not a Google one; nothing here falls back to ' +
+  'reading Google directly. Reload in a moment — the next read will most likely succeed.';
+
+/**
+ * Shown when the store is perfectly readable and simply has nothing usable in it
+ * yet — a third state, and not a rarer one than it sounds: two tabs opened at
+ * once on a row whose TTL has expired will both try to claim it, and the loser
+ * finds no payload to serve because the winner is still reading Google.
+ *
+ * `readLatestSnapshot` deliberately does not return claimed-but-unwritten rows —
+ * a row with a NULL payload has no figures and must not be rendered as zeroes —
+ * so the loser of that race genuinely has nothing. What it must not be told is
+ * that the table is missing, which is what the note above would say and which
+ * would send someone to apply a migration they have already applied.
+ */
+const SNAPSHOT_NOT_READ_YET_NOTE =
+  'No stored Google figures are available for this period yet — the first read has not ' +
+  'succeeded. It is retried on a schedule, so reload in a few minutes. The dashboard ' +
+  'does not fall back to reading Google directly: a live read on every page load is ' +
+  'what exhausted the Ads quota.';
+
 /** True when a stored panel covers exactly the window the card is about to draw. */
 function coversWindow(covered: ComparisonWindow, wanted: ComparisonWindow): boolean {
   return covered.from === wanted.from && covered.to === wanted.to;
@@ -1874,10 +1912,16 @@ async function panelFromStore<T extends {
   try {
     stored = await readLatestSnapshot<T>(store, source);
   } catch (err) {
-    console.error(
-      `[dashboard] ${source} snapshot read failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return { panel: blank(SNAPSHOT_UNAVAILABLE_NOTE), capturedAt: null };
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[dashboard] ${source} snapshot read failed: ${message}`);
+    // Two failures, two notes — see SNAPSHOT_READ_FAILED_NOTE. Neither one
+    // reaches for Google.
+    return {
+      panel: blank(
+        isMissingTableError(message) ? SNAPSHOT_UNAVAILABLE_NOTE : SNAPSHOT_READ_FAILED_NOTE,
+      ),
+      capturedAt: null,
+    };
   }
 
   const wanted = coversWindow(stored?.window ?? { from: '', to: '' }, windows.current);
@@ -1909,7 +1953,11 @@ async function panelFromStore<T extends {
     }
   }
 
-  if (!stored) return { panel: blank(SNAPSHOT_UNAVAILABLE_NOTE), capturedAt: null };
+  // Reaching here with nothing stored means the store was readable and holds no
+  // usable row — see SNAPSHOT_NOT_READ_YET_NOTE. It is NOT the missing-table
+  // case, which the catch above has already handled.
+  if (!stored) return { panel: blank(SNAPSHOT_NOT_READ_YET_NOTE), capturedAt: null };
+
 
   // Someone else holds the claim, or our own refresh just failed. Serve the
   // newest stored row. When it covers a different window the note says so — and

@@ -775,13 +775,21 @@ async function verifyStoredSnapshots(js) {
     );
   }
 
-  // The fail-closed note must not be what is rendering. If it is, the table is
-  // missing (or unreadable) and every figure below it is absent — a state that
-  // otherwise looks like "a quiet month".
+  // Both panels must actually be rendering figures. `available` is the field the
+  // card branches on, so it is the honest assertion — "is not showing the
+  // missing-store notice" alone would pass while a panel was unavailable for any
+  // other reason. The note is checked as well, because when the store IS missing
+  // the note is the part that names the migration, and losing that turns a
+  // diagnosable state into a blank card.
   const NOTE_MARKER = 'No stored Google figures are available';
   for (const [name, panel] of [['Ads', third.ads], ['GA4', third.clicks]]) {
+    assertEqual(`the ${name} panel is rendering figures`, panel && panel.available, true);
     const note = String((panel && panel.note) || '');
-    assertEqual(`the ${name} panel is not showing the missing-store notice`, note.includes(NOTE_MARKER), false);
+    assertEqual(
+      `the ${name} panel is not showing the missing-store notice`,
+      note.includes(NOTE_MARKER),
+      false,
+    );
   }
   assertEqual('the payload reports no missing store', third.storeNote, null);
 
